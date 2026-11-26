@@ -78,8 +78,47 @@ export function resolveSurveyBarPush({ shown = false, wasPushing = null, pickedO
   return !pickedOnly;
 }
 
-/** The tool groups whose tools sit in the tool bar. */
-export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms']);
+/** The tool groups whose tools sit in the tool bar. 'measure' and 'insert'
+ * only come up with the Nightly 'tool-groups-five' flag (below). */
+export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms', 'measure', 'insert']);
+
+// Nightly 'tool-groups-five' (owner 2026-11-26: "Drawboard has freeform,
+// shape, review, but then they have measure and insert ... maybe all of our
+// stuff from the nightly version in the top toolbar can be redistributed
+// better"). The Text row had grown to 19 buttons, and Measure hid in a menu
+// at the end of Shapes. With the flag on the bar has five groups, as
+// Drawboard PDF: Draw, Shapes, Text (Drawboard's Review), Measure, Insert.
+// Only where a button sits changes: each tool still makes the same mark, and
+// a mark's group for picking and restyling (utils/markToolGroup.js) is as
+// before.
+/** The Text row's tools with five groups, in row order. */
+export const FIVE_GROUP_TEXT_IDS = Object.freeze([
+  'text', 'callout', 'text-highlight', 'text-underline', 'text-squiggly', 'text-strikeout',
+  'text-remove', 'text-redact', 'area-redact',
+]);
+/** The Insert row's tools, in row order (Drawboard's Insert strip order). */
+export const FIVE_GROUP_INSERT_IDS = Object.freeze([
+  'sticky-note', 'pin', 'camera', 'image', 'hyperlink', 'audio-note', 'equation', 'snapshot', 'signature', 'stamp',
+]);
+/** Insert tools that stay armed (the rest open a card or a picker once). */
+export const FIVE_GROUP_INSERT_ARMED_TOOLS = Object.freeze(['sticky-note', 'pin', 'hyperlink', 'snapshot']);
+/** The Measure row's tools besides the measure kinds: Counter counts. */
+export const FIVE_GROUP_MEASURE_TOOLS = Object.freeze(['counter']);
+/** The Shapes row's tools with five groups (Counter and Measure moved out). */
+export const FIVE_GROUP_SHAPE_IDS = Object.freeze(['rect', 'ellipse', 'polygon', 'cloud', 'polyline', 'line', 'arrow']);
+
+/**
+ * With five groups, the row a tool's button sits in, or null when the tool
+ * sits where it always did. `measureMode` is the armed measure kind: a
+ * measure rides the Line / Polygon / Polyline tool, so the kind (not the
+ * tool) says it is a Measure.
+ */
+export function fiveGroupRowForTool(tool, { measureMode = null } = {}) {
+  if (measureMode && ['line', 'polygon', 'polyline'].includes(tool)) return 'measure';
+  if (FIVE_GROUP_MEASURE_TOOLS.includes(tool)) return 'measure';
+  if (FIVE_GROUP_INSERT_ARMED_TOOLS.includes(tool)) return 'insert';
+  return null;
+}
 
 /** The group each drawing tool (or picked mark's tool) belongs to — kept in
  * utils/markToolGroup.js, the one tool / mark -> group table. */
@@ -95,11 +134,29 @@ export { TOOL_GROUP_BY_TOOL };
  * `contextTool` is the picked mark's own tool while Select or Pan holds a
  * pick (see PDFViewer's toolbar publish), else the armed tool.
  */
-export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool, regionEditing, textHighlightMode } = {}) {
+export function resolveToolBarGroup({
+  activeTool, activeCategoryDropdown, contextTool, regionEditing, textHighlightMode,
+  toolGroupsFive = false, measureMode = null, pickedMeasureKind = null,
+} = {}) {
   // Editing a Space's areas: the tool bar shows the Areas tools instead
   // (AppShell), never a drawing group's.
   if (regionEditing || activeTool === 'region-edit') return null;
   if (activeTool === 'survey-marker') return null;
+  if (toolGroupsFive) {
+    const group = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool, regionEditing, textHighlightMode });
+    // An armed measure or Counter, or an Insert tool that stays armed, shows
+    // its own row whatever row was open before (the viewer keeps
+    // activeCategoryDropdown in step, but a tool can arm a frame earlier).
+    const armedRow = fiveGroupRowForTool(activeTool, { measureMode });
+    if (armedRow) return armedRow;
+    // A picked measurement or counter brings up the Measure row, as a picked
+    // pen stroke brings up Draw.
+    if (isSelectFamilyTool(activeTool) || activeTool === 'pan') {
+      if (pickedMeasureKind && contextTool !== 'select') return 'measure';
+      if (contextTool === 'counter') return 'measure';
+    }
+    return group;
+  }
   if (TOOL_BAR_GROUPS.includes(activeCategoryDropdown)) return activeCategoryDropdown;
   // The Text group's drag-over-text tools (Highlight / Underline / Squiggle /
   // Strikethrough / Redact text) ride Select text: keep the Text group's row

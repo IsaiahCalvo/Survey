@@ -91,6 +91,7 @@ import MeasureScaleDialog from './components/MeasureScaleDialog';
 import MeasureDepthDialog from './components/MeasureDepthDialog';
 import {
   DEPTH_MEASURE_KINDS,
+  MEASURE_KINDS,
   MEASURE_SCALES_META_KEY,
   applyMeasureEdit,
   applyPageScale,
@@ -474,7 +475,7 @@ import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
 import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
-import { resolveSurveyBarPush, resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
+import { FIVE_GROUP_INSERT_ARMED_TOOLS, FIVE_GROUP_INSERT_IDS, FIVE_GROUP_SHAPE_IDS, FIVE_GROUP_TEXT_IDS, fiveGroupRowForTool, resolveSurveyBarPush, resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageCountChange, pageNumberAfterOperation, transformPageState } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
@@ -3293,6 +3294,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [laserToolEnabled] = useState(() => isFeatureOn('laser-pointer'));
   // Nightly 'ruler-tool': Drawboard's Ruler, a straight edge over the pages.
   const [rulerToolEnabled] = useState(() => isFeatureOn('ruler-tool'));
+  // Nightly 'tool-groups-five' (owner 2026-11-26): Draw, Shapes, Text,
+  // Measure, Insert in the top bar, as Drawboard PDF (utils/toolbarRows.js).
+  const [toolGroupsFiveOn] = useState(() => isFeatureOn('tool-groups-five'));
   const [imageCameraEnabled] = useState(() => isFeatureOn('image-camera'));
   const [areaRedactEnabled] = useState(() => isFeatureOn('area-redact'));
   const rulerOn = useRulerOn();
@@ -5680,6 +5684,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // here so the tools render from it. The host is looked up after every
   // commit, because AppShell creates it in the same commit it first renders us.
   const [subToolContextTool, setSubToolContextTool] = useState(null);
+  const [subToolPickedMeasureKind, setSubToolPickedMeasureKind] = useState(null);
   const [subToolsHostEl, setSubToolsHostEl] = useState(null);
   // Test plan 63 (2026-10-06): only call the setter when the host really
   // changed. A functional no-op update still schedules a render whenever this
@@ -5898,6 +5903,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
   });
 
+  // Nightly 'tool-groups-five': what the Measure and Insert group buttons
+  // arm, the last one used (as Draw / Shapes / Text remember theirs).
+  const [lastMeasureKind, setLastMeasureKind] = useState(() => {
+    try {
+      const saved = localStorage.getItem('lastMeasureKind');
+      return MEASURE_KINDS.includes(saved) ? saved : 'length';
+    } catch (e) {
+      return 'length';
+    }
+  });
+  const [lastInsertTool, setLastInsertTool] = useState(() => {
+    try {
+      const saved = localStorage.getItem('lastInsertTool');
+      return FIVE_GROUP_INSERT_ARMED_TOOLS.includes(saved) ? saved : 'sticky-note';
+    } catch (e) {
+      return 'sticky-note';
+    }
+  });
+
   // Track last used tool for each category to keep icons persistent
   useEffect(() => {
     // Debug: log tool activation for line/arrow/callout
@@ -5940,6 +5964,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       } catch (e) { }
     }
   }, [activeTool]);
+
+  // Nightly 'tool-groups-five': declared after the effect above, so on the
+  // same change it runs second and a Measure (which rides the Line tool) or
+  // the Counter ends on the Measure row, not Shapes.
+  useEffect(() => {
+    if (!toolGroupsFiveOn) return;
+    const row = fiveGroupRowForTool(activeTool, { measureMode });
+    if (row === 'measure') {
+      setActiveCategoryDropdown((prev) => (prev === 'measure' ? prev : 'measure'));
+      if (measureMode && MEASURE_KINDS.includes(measureMode)) {
+        setLastMeasureKind(measureMode);
+        try { localStorage.setItem('lastMeasureKind', measureMode); } catch (e) { }
+      }
+    } else if (row === 'insert') {
+      setActiveCategoryDropdown((prev) => (prev === 'insert' ? prev : 'insert'));
+      setLastInsertTool(activeTool);
+      try { localStorage.setItem('lastInsertTool', activeTool); } catch (e) { }
+    }
+  }, [activeTool, measureMode, toolGroupsFiveOn]);
 
   // Close secondary toolbar when pan or select tools are active
   // ('text-select' is a Select mode, so it behaves the same — KAL-239.)
@@ -27932,6 +27975,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return { id: getAnnotationRenderIdentity(obj).annotationId, keep: keepsProportions(obj) };
   }, [markBarByKindOn, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
 
+  // Nightly 'tool-groups-five': what the Measure and Insert group buttons
+  // arm. Measure: the last measure used (as the Measure menu row did).
+  // Insert: the last Insert tool that stays armed, if its button is shown;
+  // else the first one shown; with none, the row just opens.
+  const handleArmToolGroup = useCallback((group) => {
+    if (group === 'measure') {
+      setActiveCategoryDropdown('measure');
+      const kind = MEASURE_KINDS.includes(lastMeasureKind) ? lastMeasureKind : 'length';
+      setActiveTool(measureBaseTool(kind));
+      setMeasureMode(kind);
+      return;
+    }
+    if (group === 'insert') {
+      setActiveCategoryDropdown('insert');
+      const shown = [
+        noteToolEnabled && 'sticky-note',
+        pinsDocOn && 'pin',
+        linkToolOn && 'hyperlink',
+        snapshotToolEnabled && 'snapshot',
+      ].filter(Boolean);
+      const tool = shown.includes(lastInsertTool) ? lastInsertTool : shown[0];
+      if (tool) setActiveTool(tool);
+    }
+  }, [lastMeasureKind, lastInsertTool, noteToolEnabled, pinsDocOn, linkToolOn, snapshotToolEnabled]);
+
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
@@ -28030,6 +28098,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // shows Select's own modes and row 2 the settings they share.
     const subToolTool = groupSummary?.mixedKinds ? 'select' : contextTool;
     setSubToolContextTool((prev) => (prev === subToolTool ? prev : subToolTool));
+    // Nightly 'tool-groups-five': a picked measurement (or a group of them)
+    // brings up the Measure row (utils/toolbarRows.js resolveToolBarGroup).
+    const pickedMeasureKind = toolGroupsFiveOn && pickBarTool === 'select'
+      ? (groupMarks
+        ? (groupMarks.every((mark) => getMeasureKind(mark)) ? getMeasureKind(groupMarks[0]) : null)
+        : (!groupSummary && !selectedToolbarCallout ? (getMeasureKind(selectedAnnot) || null) : null))
+      : null;
+    setSubToolPickedMeasureKind((prev) => (prev === pickedMeasureKind ? prev : pickedMeasureKind));
     // What the picked mark(s) can change: a partly erased or imported pen
     // stroke has no rebuildable width, a group only offers what at least one
     // member has. Null while nothing is picked (the tool's own controls).
@@ -28230,6 +28306,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // w44: the tool whose group's tools the tool bar shows ('select' when
       // marks of several kinds are picked together) — utils/toolbarRows.js.
       toolBarContextTool: subToolTool,
+      // Nightly 'tool-groups-five' (utils/toolbarRows.js resolveToolBarGroup).
+      toolGroupsFive: toolGroupsFiveOn,
+      pickedMeasureKind,
+      lastMeasureKind,
+      lastInsertTool,
+      armToolGroup: handleArmToolGroup,
       hasLiveTextSelection: !!liveTextSelection?.pages?.length,
       textMarkupSelectionRect,
       // r5b #7: a Viewer's (and a Commenter's) mark tools show disabled with
@@ -28517,6 +28599,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     lastDrawTool,
     lastShapeTool,
     lastReviewTool,
+    toolGroupsFiveOn,
+    lastMeasureKind,
+    lastInsertTool,
+    handleArmToolGroup,
     showSurveyPanel,
     surveyMarkerPicked,
     selectedTemplate,
@@ -41734,7 +41820,10 @@ ${pageBlocks}
             The same buttons and handlers draw both; only the host and the
             wrapper differ. */}
         {isActive && pdfFile && typeof document !== 'undefined' && (() => {
-          const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool, textHighlightMode: textDragToolsOn && Boolean(textHighlightMode) });
+          const toolBarGroup = resolveToolBarGroup({
+            activeTool, activeCategoryDropdown, contextTool: subToolContextTool, textHighlightMode: textDragToolsOn && Boolean(textHighlightMode),
+            toolGroupsFive: toolGroupsFiveOn, measureMode, pickedMeasureKind: subToolPickedMeasureKind,
+          });
           // w46 (owner 2026-09-26: select modes in top bar): the Survey row
           // has its own slot ABOVE row 2 (AppShell #chrome-survey-row-slot).
           // In Select mode row 2 now comes and goes as a mark is picked and
@@ -42019,14 +42108,15 @@ ${pageBlocks}
                   { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
                   { id: 'counter', label: 'Counter', iconName: 'counter' },
                   { id: 'measure', measure: true, label: 'Measure', iconName: 'tapeMeasure' }
-                ].map(t => {
+                // Nightly 'tool-groups-five': Counter and Measure have their own row.
+                ].filter((t) => !toolGroupsFiveOn || FIVE_GROUP_SHAPE_IDS.includes(t.id)).map(t => {
                   if (t.measure) {
                     // Drawboard Measure group, folded into one button so the
                     // Shape row still fits a 820px tablet: it opens a menu of
                     // Length / Area / Page scale (calibrate or preset).
                     const measureItems = [
                       { key: 'length', label: 'Length', iconName: 'measureLength' },
-                      ...(measureDepthEnabled ? [{ key: 'polylength', label: 'Polylength', iconName: 'polyline' }] : []),
+                      ...(measureDepthEnabled ? [{ key: 'polylength', label: 'Polylength', iconName: 'measurePolylength' }] : []),
                       { key: 'area', label: 'Area', iconName: 'measureArea' },
                       { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
                       ...(measureDepthEnabled ? [
@@ -42534,7 +42624,62 @@ ${pageBlocks}
               </>
             )}
 
-            {subRowCategory === 'review' && (
+            {subRowCategory === 'measure' && (
+              <>
+                {/* Nightly 'tool-groups-five': Drawboard's Measure strip. The
+                    kinds the Shapes row's Measure menu held, laid out flat,
+                    Page scale first (Drawboard's Calibrate), then Counter. */}
+                {[
+                  { key: 'scale', label: 'Page scale', iconName: 'measureScale' },
+                  { key: 'length', label: 'Length', iconName: 'measureLength' },
+                  ...(measureDepthEnabled ? [{ key: 'polylength', label: 'Polylength', iconName: 'measurePolylength' }] : []),
+                  { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
+                  { key: 'area', label: 'Area', iconName: 'measureArea' },
+                  ...(measureDepthEnabled ? [
+                    { key: 'wallArea', label: 'Wall area', iconName: 'measureWallArea' },
+                    { key: 'volume', label: 'Volume', iconName: 'measureVolume' },
+                  ] : []),
+                  ...(measureAngleEnabled ? [{ key: 'angle', label: 'Angle', iconName: 'measureAngle' }] : []),
+                  { key: 'counter', label: 'Counter', iconName: 'counter', tool: 'counter' },
+                ].map((m) => {
+                  const pressed = m.key === 'scale'
+                    ? !!measureScaleDialog
+                    : m.tool ? (activeTool === m.tool && !measureMode) : measureMode === m.key;
+                  return (
+                    <button
+                      key={m.key}
+                      data-measure-tool={m.key}
+                      data-morph-icon={m.iconName}
+                      data-tool-switch="true"
+                      onClick={(e) => {
+                        if (m.key === 'scale') {
+                          setMeasureScaleDialog({ pageNumber: pageNum });
+                          return;
+                        }
+                        if (m.tool) {
+                          setActiveTool(m.tool);
+                          setMeasureMode(null);
+                          return;
+                        }
+                        setActiveTool(measureBaseTool(m.key));
+                        setMeasureMode(m.key);
+                        // Polygon / polyline measures finish with Enter: give
+                        // the page the keys (see the Shapes row's Polygon).
+                        if (measureBaseTool(m.key) !== 'line') releaseFocusForDraftTool(e.currentTarget);
+                      }}
+                      {...chromeTip(m.label, 'below')}
+                      className={`btn chrome-subcontrol ${pressed ? 'btn-active' : 'btn-ghost'}`}
+                      aria-pressed={pressed}
+                      aria-label={m.label}
+                    >
+                      <Icon name={m.iconName} size={CHROME_GLYPH} />
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {(subRowCategory === 'review' || subRowCategory === 'insert') && (
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
@@ -42577,7 +42722,15 @@ ${pageBlocks}
                   // squiggly, and strike-through are hidden from the toolbar for now.
                   // { id: 'underline', label: 'Underline', iconName: 'underline', menu: 'underline' },
                   // { id: 'strikeout', label: 'Strike Through', iconName: 'strikeout', menu: 'strike' }
-                ].map(t => {
+                ].filter((t) => !toolGroupsFiveOn
+                  // Nightly 'tool-groups-five': the Text row keeps the text
+                  // tools; the rest sit in Insert, each in Drawboard's order.
+                  || (subRowCategory === 'insert' ? FIVE_GROUP_INSERT_IDS : FIVE_GROUP_TEXT_IDS).includes(t.id))
+                  .sort((a, b) => (toolGroupsFiveOn
+                    ? (subRowCategory === 'insert' ? FIVE_GROUP_INSERT_IDS : FIVE_GROUP_TEXT_IDS).indexOf(a.id)
+                      - (subRowCategory === 'insert' ? FIVE_GROUP_INSERT_IDS : FIVE_GROUP_TEXT_IDS).indexOf(b.id)
+                    : 0))
+                  .map(t => {
                   const isUnderlineMenu = t.menu === 'underline';
                   const isStrikeMenu = t.menu === 'strike';
                   const popupOpen = isUnderlineMenu ? underlineCaretPopupOpen : (isStrikeMenu ? strikeCaretPopupOpen : false);

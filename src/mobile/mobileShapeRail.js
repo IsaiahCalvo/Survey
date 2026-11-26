@@ -22,7 +22,7 @@ export function mobileMeasureItems(depthToolsOn = false, { angle = false } = {})
   const [length, area, perimeter, scale] = MOBILE_MEASURE_ITEMS;
   return withAngle([
     length,
-    { key: 'polylength', label: 'Polylength', icon: 'polyline' },
+    { key: 'polylength', label: 'Polylength', icon: 'measurePolylength' },
     area,
     perimeter,
     { key: 'wallArea', label: 'Wall area', icon: 'measureWallArea' },
