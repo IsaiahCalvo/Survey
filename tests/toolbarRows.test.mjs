@@ -50,7 +50,9 @@ test('an armed tool shows its group\'s tools; Pan and Survey Marker placement sh
   assert.equal(resolveToolBarGroup({ activeTool: 'callout', activeCategoryDropdown: 'review' }), 'review');
   assert.equal(resolveToolBarGroup({ activeTool: 'pan', activeCategoryDropdown: null, contextTool: 'pan' }), null);
   assert.equal(resolveToolBarGroup({ activeTool: 'survey-marker', activeCategoryDropdown: 'survey' }), null);
-  assert.deepEqual([...TOOL_BAR_GROUPS], ['draw', 'shape', 'review', 'forms']);
+  // DELIBERATE ASSERTION CHANGE (owner 2026-11-26): Measure and Insert are
+  // tool-bar rows too; they only come up with Nightly 'tool-groups-five'.
+  assert.deepEqual([...TOOL_BAR_GROUPS], ['draw', 'shape', 'review', 'forms', 'measure', 'insert']);
 });
 
 test('the formatting row shows for an armed tool, a picked mark, the eraser, an open text box, and Text Select', () => {
@@ -77,7 +79,7 @@ test('the formatting row shows for an armed tool, a picked mark, the eraser, an 
 });
 
 test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked mark in Select mode', () => {
-  assert.match(pdfViewer, /resolveToolBarGroup\(\{ activeTool, activeCategoryDropdown, contextTool: subToolContextTool, textHighlightMode: textDragToolsOn && Boolean\(textHighlightMode\) \}\)/);
+  assert.match(pdfViewer, /resolveToolBarGroup\(\{\s*activeTool, activeCategoryDropdown, contextTool: subToolContextTool, textHighlightMode: textDragToolsOn && Boolean\(textHighlightMode\),\s*toolGroupsFive: toolGroupsFiveOn, measureMode, pickedMeasureKind: subToolPickedMeasureKind,\s*\}\)/);
   assert.match(pdfViewer, /setSubToolContextTool\(\(prev\) => \(prev === subToolTool \? prev : subToolTool\)\)/);
   assert.match(pdfViewer, /document\.getElementById\('chrome-subtools-host'\)/);
   assert.match(pdfViewer, /TOOL_BAR_GROUPS\.includes\(toolBarGroup\) && subToolsHostEl/);
@@ -85,9 +87,11 @@ test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked ma
   // The phone keeps its Survey rail; its controls do not use these rows.
   assert.match(pdfViewer, /mobileMode \|\| showsSurveyRow\(\{ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked \}\)/);
   assert.match(pdfViewer, /if \(subRowGroup && subRowHost\) \{\s*rows\.push\(renderSubRow\(subRowGroup, subRowHost, false\)\);/);
-  for (const group of ['draw', 'shape', 'review', 'survey']) {
+  for (const group of ['draw', 'shape', 'survey', 'measure']) {
     assert.match(pdfViewer, new RegExp(`\\{subRowCategory === '${group}' && `), group);
   }
+  // The Text row also draws Insert (Nightly 'tool-groups-five').
+  assert.match(pdfViewer, /\{\(subRowCategory === 'review' \|\| subRowCategory === 'insert'\) && /);
 });
 
 test('Survey and annotation controls take turns, including stale selection context', () => {
@@ -340,7 +344,8 @@ test('Areas mode: the area tools take the loadout, there is no row 2, a drawing 
   // Draw, Shapes, Text and Survey stay live and leave area editing first,
   // keeping the areas, like picking another tool anywhere.
   assert.doesNotMatch(appShell, /disabled=\{areasMode\}|\|\| areasMode\}/);
-  assert.equal((appShell.match(/leaveAreasMode\(\);/g) || []).length, 4);
+  // Draw, Shapes, Text, Survey, and Measure / Insert (Nightly 'tool-groups-five').
+  assert.equal((appShell.match(/leaveAreasMode\(\);/g) || []).length, 6);
   assert.match(appShell, /const leaveAreasMode = \(\) => \{ if \(areasMode\) regionApi\.leave\?\.\(\); \};/);
 });
 

@@ -3903,14 +3903,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
                   bottomToolbarApi.setActiveCategoryDropdown('shape');
-                  if (toolGroupsFive) {
-                    // Counter sits in Measure with five groups, and a measure
-                    // rides Line / Polygon: arm a real Shapes tool.
-                    if (!FIVE_GROUP_SHAPE_IDS.includes(bottomToolbarApi.activeTool) || bottomToolbarApi.measureMode) {
-                      bottomToolbarApi.setActiveTool(FIVE_GROUP_SHAPE_IDS.includes(bottomToolbarApi.lastShapeTool) ? bottomToolbarApi.lastShapeTool : 'rect', { source: 'category-tab' });
-                    }
-                  } else if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool, { source: 'category-tab' });
+                  // Nightly 'tool-groups-five': Counter sits in Measure, and a
+                  // measure rides Line / Polygon, so arm a real Shapes tool.
+                  const shapeIds = toolGroupsFive ? FIVE_GROUP_SHAPE_IDS : ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'];
+                  const onShapeTool = shapeIds.includes(bottomToolbarApi.activeTool) && !(toolGroupsFive && bottomToolbarApi.measureMode);
+                  if (!onShapeTool) {
+                    const shapeTool = !toolGroupsFive || shapeIds.includes(bottomToolbarApi.lastShapeTool) ? bottomToolbarApi.lastShapeTool : 'rect';
+                    bottomToolbarApi.setActiveTool(shapeTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip(toolsViewOnly ? 'View only' : 'Shapes', 'below')}
