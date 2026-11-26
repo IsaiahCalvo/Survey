@@ -99,8 +99,10 @@ test('five groups: every row stays clear of the right-hand buttons at 1440', asy
   await openSheet(page, sheet);
   let textLeft = null;
   for (const group of ['Draw', 'Shapes', 'Text', 'Measure', 'Insert']) {
-    await page.locator(`[data-tool-toolbar] button[aria-label="${group}"]`).click();
-    await expect(page.locator(`[data-tool-toolbar] button[aria-label="${group}"]`)).toHaveAttribute('aria-pressed', 'true');
+    // The group button, not the Text box tool (also labelled "Text").
+    const groupButton = page.locator(`[data-tool-toolbar] button[data-tool-group="true"][aria-label="${group}"]`);
+    await groupButton.click();
+    await expect(groupButton).toHaveAttribute('aria-pressed', 'true');
     const row = await measure(page);
     expect(row.tools.length, group).toBeGreaterThan(1);
     for (const tool of row.tools) expect(tool.right, `${group}: ${tool.label}`).toBeLessThanOrEqual(row.exportsLeft);
