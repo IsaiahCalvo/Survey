@@ -4,8 +4,8 @@
    edge, as tall as the rail's lower block (Zoom in down to the viewer's
    foot), and slides out from behind the rail and back in on the side-panel
    time (suite Motion table: --motion-panel). Its rows spread evenly down
-   that height: View at the top, the view buttons on the foot, and Fit,
-   Pages and Scroll evenly between. */
+   that height: View at the top, the view switches on the foot, and Fit,
+   Pages, Columns and Scroll evenly between. */
 .view-drawer {
   position: absolute;
   right: 100%;
@@ -14,11 +14,12 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  width: 320px;
+  width: 336px;
   padding: 10px 14px 10px;
   background: var(--surface-2);
+  /* The right side is a hairline divider against the rail (owner
+     2026-11-26: "a divider line between it and the right rail"). */
   border: 1px solid var(--border);
-  border-right: 0;
   border-bottom: 0;
   /* Only the corner that stands out over the page is rounded: the right
      side meets the rail and the foot meets the viewer's foot. */
@@ -70,7 +71,7 @@
 .view-drawer__head {
   display: flex;
   align-items: center;
-  min-height: 28px;
+  min-height: 20px;
   padding: 0 2px;
 }
 
@@ -79,68 +80,196 @@
   color: var(--text-1);
 }
 
-/* Fit, Pages (Columns in a Grid) and Scroll: spread evenly down the space
-   between the title and the view buttons. */
-.view-drawer__sections {
+/* Owner 2026-11-26 ("nothing shifting", "the row of three, then four,
+   then three throws me off"): every row has one shape - name and chosen
+   value on the left, one control of one fixed width on the right - and
+   every row is always drawn, so a click changes colours, never places. The
+   rows spread down the drawer; the named view switches sit on the foot. */
+.view-drawer__rows {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  justify-content: space-evenly;
-  gap: 12px;
-  padding: 10px 0;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 0 12px;
 }
 
-.view-drawer__section {
+.view-drawer__row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-/* The labels share one width, so every row's choices start on one line. */
-.view-drawer__label {
-  flex: 0 0 52px;
-  padding: 0 2px;
-  color: var(--text-2);
-}
-
-/* One choice row: a hairline frame, the choices sharing its width. The
-   choices keep the shared step states (RailFlyout.css .rail-flyout__step):
-   hover --hover, press --pressed at once, chosen --surface-3. */
-.view-drawer__choices {
+.view-drawer__name {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 2px;
 }
 
-.view-drawer__choices > .rail-flyout__step {
-  flex: 1 1 0;
+.view-drawer__label {
+  font: 500 13px/16px var(--font-ui);
+  color: var(--text-1);
+}
+
+/* The chosen value under the name: fixed height, so a longer word never
+   moves the row. */
+.view-drawer__value {
+  height: 13px;
+  overflow: hidden;
+  font: 400 11px/13px var(--font-ui);
+  color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.view-drawer__row[data-off] .view-drawer__label,
+.view-drawer__row[data-off] .view-drawer__value {
+  color: var(--text-disabled);
+}
+
+/* One segmented control per row, all the same width, so the rows line up
+   in one column whether they hold three choices or six. The frame is a
+   well (raised); a choice hovers to raised-2 and presses to pressed-2. */
+.view-drawer__seg {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(var(--cells, 3), minmax(0, 1fr));
+  gap: 2px;
+  width: 208px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--hover);
+}
+
+.view-drawer__cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   height: 28px;
-  padding: 0 6px;
-  border-radius: var(--radius-xs);
-  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-3);
+  font: 500 12px/14px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-state) var(--ease-out),
+    box-shadow var(--motion-state) var(--ease-out),
+    color var(--motion-state) var(--ease-out);
 }
 
-/* Page by page is the one long word; it takes the room it needs. */
-.view-drawer__choices > .rail-flyout__step[data-view-scroll='page'] {
-  flex: 1.6 1 0;
+@media (hover: hover) {
+  .view-drawer__cell:not([aria-checked='true']):not([aria-disabled='true']):hover {
+    background: var(--surface-3);
+    color: var(--text-1);
+  }
 }
 
-/* The view buttons on the drawer's foot, spread across its width. */
-.view-drawer__tools {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* Chosen: the selected fill with a hairline, its picture gold (accent: "a
+   chosen icon"). Hover never repaints it. */
+.view-drawer__cell[aria-checked='true'] {
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: default;
+}
+
+.view-drawer__cell:active:not([aria-disabled='true']) {
+  background: var(--pressed-2, var(--pressed));
+  transition-duration: 0s;
+}
+
+.view-drawer__cell[aria-disabled='true'] {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.view-drawer__cell:focus-visible,
+.view-drawer__toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* The view buttons: named switches in an even three-across grid over a
+   hairline. On: the selected fill, the word full strength, the picture
+   gold. */
+.view-drawer__toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
 
+.view-drawer__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-state) var(--ease-out),
+    color var(--motion-state) var(--ease-out);
+}
+
+.view-drawer__toggle > svg,
+.view-drawer__toggle > span:first-child:not(.view-drawer__word) {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--text-3);
+  transition: color var(--motion-state) var(--ease-out);
+}
+
+.view-drawer__toggle .view-drawer__word {
+  min-width: 0;
+  overflow: hidden;
+  font: 500 12px/14px var(--font-ui);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (hover: hover) {
+  .view-drawer__toggle:not([data-on='true']):hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+.view-drawer__toggle[data-on='true'] {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+
+.view-drawer__toggle[data-on='true'] > svg,
+.view-drawer__toggle[data-on='true'] > span:first-child:not(.view-drawer__word) {
+  color: var(--accent);
+}
+
+.view-drawer__toggle:active {
+  background: var(--pressed);
+  transition-duration: 0s;
+}
+
 @media (pointer: coarse) {
-  .view-drawer__choices > .rail-flyout__step { height: 36px; }
+  .view-drawer__cell,
+  .view-drawer__toggle { height: 40px; }
 }
 
 /* #1660: the floating Properties panel sits above the right rail's host, so

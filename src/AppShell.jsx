@@ -6061,7 +6061,14 @@ export default function App({ devPreviewReturnTab = null }) {
               // The rail's view buttons. In the rail their tips point left;
               // in the View row (Nightly 'view-strip') they point up, clear of
               // the row's other buttons.
-              const viewButtons = (tipSide) => (
+              // labelled (the View drawer, owner 2026-11-26: the row of bare
+              // icons "throws me off"): each button shows its name beside its
+              // glyph, as a toggle chip in a tidy grid.
+              const viewLook = (labelled, on) => (labelled
+                ? { className: 'view-drawer__toggle', 'data-on': on ? 'true' : undefined }
+                : { style: { ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' } });
+              const viewWord = (labelled, word) => (labelled ? <span className="view-drawer__word">{word}</span> : null);
+              const viewButtons = (tipSide, labelled = false) => (
                 <>
                     {/* Nightly 'paper-overlays' (Drawboard Projects VT-46):
                         a paper pattern over every page, beside the grid. */}
@@ -6076,9 +6083,10 @@ export default function App({ devPreviewReturnTab = null }) {
                           aria-expanded={open}
                           data-paper-overlay-toggle="true"
                           {...chromeTip(open ? undefined : 'Paper', tipSide)}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                          {...viewLook(labelled, on || open)}
                         >
                           <PaperOverlayGlyph size={RAIL_CONTROL_GLYPH} />
+                          {viewWord(labelled, 'Paper')}
                         </button>
                       )} />
                     )}
@@ -6095,9 +6103,10 @@ export default function App({ devPreviewReturnTab = null }) {
                           aria-expanded={open}
                           data-thin-lines-toggle="true"
                           {...chromeTip(open ? undefined : 'Thin PDF lines', tipSide)}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                          {...viewLook(labelled, on || open)}
                         >
                           <ThinLinesGlyph size={RAIL_CONTROL_GLYPH} />
+                          {viewWord(labelled, 'Thin lines')}
                         </button>
                       )} />
                     )}
@@ -6115,9 +6124,10 @@ export default function App({ devPreviewReturnTab = null }) {
                           aria-expanded={open}
                           data-page-grid-toggle="true"
                           {...chromeTip(open ? undefined : 'Page grid', tipSide)}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                          {...viewLook(labelled, on || open)}
                         >
                           <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                          {viewWord(labelled, 'Page grid')}
                         </button>
                       )} />
                     ) : (
@@ -6128,9 +6138,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-pressed={on}
                         data-page-grid-toggle="true"
                         {...chromeTip(on ? 'Hide page grid' : 'Show page grid', tipSide)}
-                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                        {...viewLook(labelled, on)}
                       >
                         <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                        {viewWord(labelled, 'Page grid')}
                       </button>
                     ))} />
                     {/* Owner 2026-10-22: snapping's switch, beside the grid
@@ -6148,9 +6159,10 @@ export default function App({ devPreviewReturnTab = null }) {
                           aria-expanded={open}
                           data-snapping-toggle="true"
                           {...chromeTip(open ? undefined : 'Snapping', tipSide)}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                          {...viewLook(labelled, on || open)}
                         >
                           <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                          {viewWord(labelled, 'Snapping')}
                         </button>
                       )} />
                     ) : (
@@ -6162,9 +6174,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-pressed={on}
                         data-snapping-toggle="true"
                         {...chromeTip(snappingLabel(on), tipSide)}
-                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                        {...viewLook(labelled, on)}
                       >
                         <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                        {viewWord(labelled, 'Snapping')}
                       </button>
                     )} />
                     )}
@@ -6177,9 +6190,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-pressed={on}
                         data-dark-pages-toggle="true"
                         {...chromeTip(on ? 'Light pages' : 'Dark pages', tipSide)}
-                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                        {...viewLook(labelled, on)}
                       >
                         <DarkPagesGlyph size={RAIL_CONTROL_GLYPH} />
+                        {viewWord(labelled, 'Dark pages')}
                       </button>
                     )} />
                     {hideMarksEnabled && (
@@ -6190,9 +6204,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-pressed={allMarksHidden}
                         data-hide-marks-toggle="true"
                         {...chromeTip(allMarksHidden ? 'Show all marks' : 'Hide all marks', tipSide)}
-                        style={{ ...footerBtn(), color: allMarksHidden ? 'var(--text-1)' : 'var(--text-3)' }}
+                        {...viewLook(labelled, allMarksHidden)}
                       >
                         <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
+                        {viewWord(labelled, 'Hide marks')}
                       </button>
                     )}
                     {/* Nightly 'comment-pins': the "On the page" card (comments,
@@ -6208,9 +6223,10 @@ export default function App({ devPreviewReturnTab = null }) {
                           aria-expanded={open}
                           data-pin-filter-toggle="true"
                           {...chromeTip(open ? undefined : 'Comments, issues and tasks', tipSide)}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                          {...viewLook(labelled, on || open)}
                         >
                           <Icon name="pagePin" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                          {viewWord(labelled, 'On the page')}
                         </button>
                       )} />
                     )}
@@ -6218,9 +6234,9 @@ export default function App({ devPreviewReturnTab = null }) {
               );
               // Nightly 'view-strip' (owner 2026-11-24, drawer 2026-11-25): the
               // View drawer the rail's Page fit button slides out
-              // (ViewStripMenu.jsx). The fit list's eleven rows become three
-              // rows of choices (Fit, Pages, Scroll) spread down the drawer,
-              // and the view buttons sit on its foot in one row.
+              // (ViewStripMenu.jsx): even rows of choices (Fit, Pages,
+              // Columns, Scroll) spread down the drawer, then the view
+              // buttons as named switches on its foot.
               const viewCardBody = () => {
                 const gridOn = isGridMode(pageSpread);
                 const columns = gridOn ? pageSpread.slice(5) : null;
@@ -6250,58 +6266,81 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                   refit();
                 };
-                const step = ({ key, label, on, off = false, onPick, ...rest }) => (
+                // Owner 2026-11-26 ("nothing shifting", "the row of three,
+                // then four, then three throws me off"): every row is the same
+                // shape - its name and the chosen value on the left, one
+                // control of one fixed width on the right - and every row is
+                // always there (Columns greys out unless the pages are a
+                // Grid), so a click never moves anything. The choices are
+                // pictures; each one's name is its tooltip.
+                const cell = ({ key, label, glyph = null, text = null, on, off = false, onPick, ...rest }) => (
                   <button
                     key={key}
                     type="button"
                     role="radio"
                     aria-checked={on}
                     aria-disabled={off || undefined}
-                    className="rail-flyout__step rail-flyout__step--word"
+                    aria-label={label}
+                    className="view-drawer__cell"
                     onClick={() => { if (!on && !off) onPick(); }}
+                    {...chromeTip(label, 'above')}
                     {...rest}
                   >
-                    {label}
+                    {glyph ? <Icon name={glyph} size={18} color="currentColor" /> : text}
                   </button>
                 );
-                // A label, then its choices sharing the rest of the row.
-                const row = (id, label, steps) => (
-                  <div role="radiogroup" aria-labelledby={id} className="view-drawer__section">
-                    <span id={id} className="view-drawer__label">{label}</span>
-                    <span className="view-drawer__choices">{steps}</span>
+                const row = (id, label, value, cells, off = false) => (
+                  <div className="view-drawer__row" data-off={off || undefined}>
+                    <span className="view-drawer__name">
+                      <span id={id} className="view-drawer__label">{label}</span>
+                      <span className="view-drawer__value">{value}</span>
+                    </span>
+                    <div role="radiogroup" aria-labelledby={id} aria-disabled={off || undefined} className="view-drawer__seg" style={{ '--cells': cells.length }}>{cells}</div>
                   </div>
                 );
+                const FIT_GLYPHS = { [ZOOM_MODES.FIT_PAGE]: 'fitPage', [ZOOM_MODES.FIT_WIDTH]: 'fitWidth', [ZOOM_MODES.FIT_HEIGHT]: 'fitHeight' };
+                const SPREAD_GLYPHS = { single: 'pagesSingle', double: 'pagesDouble', cover: 'pagesCover', grid: 'pagesGrid' };
+                const SCROLL_GLYPHS = { down: 'scrollDown', across: 'scrollAcross', page: 'scrollPageByPage' };
+                const fitOptions = ZOOM_MODE_OPTIONS.filter((o) => o.id !== ZOOM_MODES.MANUAL);
+                const fitWord = (o) => o.label.replace(/^Fit\s+/i, '').replace(/^./, (c) => c.toUpperCase());
+                const fitNow = fitOptions.find((o) => o.id === api.zoomMode);
+                const spreadNow = PAGE_SPREAD_OPTIONS.find((o) => (o.id === 'grid' ? gridOn : o.id === pageSpread));
+                const scrollNow = scrollChoices.find(([id]) => id === scroll);
+                const columnChoices = ['auto', ...GRID_COLUMN_CHOICES.map(String)];
                 return (
                   <>
-                    <div className="view-drawer__sections">
-                    {row('view-card-fit', 'Fit', ZOOM_MODE_OPTIONS.filter((o) => o.id !== ZOOM_MODES.MANUAL).map((o) => step({
+                    <div className="view-drawer__rows">
+                    {row('view-card-fit', 'Fit', fitNow ? fitWord(fitNow) : 'Custom', fitOptions.map((o) => cell({
                       key: o.id,
-                      label: o.label.replace(/^Fit\s+/i, '').replace(/^./, (c) => c.toUpperCase()),
-                      'aria-label': o.label,
+                      label: o.label,
+                      glyph: FIT_GLYPHS[o.id] || 'fitPage',
                       'data-fit-mode': o.id,
                       on: o.id === api.zoomMode,
                       onPick: () => api.handleZoomModeSelect(o.id),
                     })))}
                     {pageSpreadsOn && !isNarrowShell && (
                       <>
-                        {row('view-card-pages', 'Pages', PAGE_SPREAD_OPTIONS.map((o) => step({
+                        {row('view-card-pages', 'Pages', spreadNow?.label || 'Single', PAGE_SPREAD_OPTIONS.map((o) => cell({
                           key: o.id,
                           label: o.label,
+                          glyph: SPREAD_GLYPHS[o.id],
                           'data-page-spread': o.id,
                           on: o.id === 'grid' ? gridOn : o.id === pageSpread,
                           onPick: () => { setPageSpreadMode(o.id); refit(); },
                         })))}
-                        {gridOn && row('view-card-columns', 'Columns', ['auto', ...GRID_COLUMN_CHOICES.map(String)].map((n) => step({
+                        {row('view-card-columns', 'Columns', gridOn ? (columns === 'auto' ? 'Auto' : `${columns} across`) : 'Grid only', columnChoices.map((n) => cell({
                           key: n,
-                          label: n === 'auto' ? 'Auto' : n,
-                          'aria-label': n === 'auto' ? 'Columns from the page count' : `${n} columns`,
+                          label: n === 'auto' ? 'Columns from the page count' : `${n} columns`,
+                          text: n === 'auto' ? 'Auto' : n,
                           'data-grid-columns': n,
-                          on: n === columns,
+                          on: gridOn && n === columns,
+                          off: !gridOn,
                           onPick: () => { setPageSpreadMode(`grid-${n}`); refit(); },
-                        })))}
-                        {row('view-card-scroll', 'Scroll', scrollChoices.map(([id, label, off]) => step({
+                        })), !gridOn)}
+                        {row('view-card-scroll', 'Scroll', scrollNow?.[1] || 'Down', scrollChoices.map(([id, label, off]) => cell({
                           key: id,
                           label,
+                          glyph: SCROLL_GLYPHS[id],
                           'data-view-scroll': id,
                           on: scroll === id,
                           off,
@@ -6310,8 +6349,10 @@ export default function App({ devPreviewReturnTab = null }) {
                       </>
                     )}
                     </div>
-                    <div role="toolbar" aria-label="View options" className="view-drawer__tools">
-                      {viewButtons('above')}
+                    {/* The view buttons as named switches in an even grid
+                        (owner 2026-11-26: the row of bare icons threw him). */}
+                    <div role="toolbar" aria-label="View options" className="view-drawer__toggles">
+                      {viewButtons('above', true)}
                     </div>
                   </>
                 );
