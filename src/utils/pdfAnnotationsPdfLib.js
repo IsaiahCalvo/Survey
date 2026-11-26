@@ -762,7 +762,7 @@ export function buildPdfExportAnnotationPlan({
     const isActiveModuleSurveyMarker = (
       item.source === 'survey-marker'
       && activeModuleId != null
-      && (item.moduleId ?? null) === activeModuleId
+      && (activeModuleId === '*' || (item.moduleId ?? null) === activeModuleId)
     );
     if (item.source === 'survey-marker' && !isActiveModuleSurveyMarker) {
       recordSkip(diagnostics, item, 'survey-marker-export-excluded');

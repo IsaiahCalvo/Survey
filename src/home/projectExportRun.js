@@ -52,11 +52,20 @@ async function pageSizesOf(bytes) {
 
 /** The file with its marks, or its stored bytes when it has none. */
 export async function withStoredMarks(client, documentId, bytes) {
-  const [{ loadStoredAnnotationDoc }, store, { carryOverLegacyMarks }, { deriveCalloutsFromByPage }] = await Promise.all([
+  const [
+    { loadStoredAnnotationDoc },
+    store,
+    { carryOverLegacyMarks },
+    { deriveCalloutsFromByPage },
+    { surveyMarkerRenderEntry },
+    { normalizeSurveyMarkerColor },
+  ] = await Promise.all([
     import('../services/documentVersionMarks.js'),
     import('../services/annotationDocStore.js'),
     import('../services/legacyMarksCarryOver.js'),
     import('../utils/calloutAnnotationBridge.js'),
+    import('../utils/surveyMarkerFamily.js'),
+    import('../viewerShared.js'),
   ]);
   const doc = await loadStoredAnnotationDoc(client, documentId);
   try {
@@ -65,8 +74,21 @@ export async function withStoredMarks(client, documentId, bytes) {
     // copy is never written back).
     try { carryOverLegacyMarks(doc, { origin: 'project-export' }); } catch { /* read what is there */ }
     const byPage = store.docToByPage(doc);
+    const rawMarkers = store.docToSurveyMarkers(doc) || {};
+    const surveyMarkers = {};
+    for (const [annotationId, marker] of Object.entries(rawMarkers)) {
+      if (!marker?.pageNumber || !marker?.bounds) continue;
+      const entry = surveyMarkerRenderEntry(annotationId, marker, normalizeSurveyMarkerColor);
+      surveyMarkers[annotationId] = {
+        ...marker,
+        annotationId,
+        color: entry ? (entry.color || null) : (marker?.color || null),
+        needsEntity: entry ? entry.needsEntity === true : marker?.needsEntity === true,
+      };
+    }
     const count = Object.values(byPage || {}).reduce((n, page) => n + (page?.objects?.length || 0), 0);
-    if (!count) return bytes;
+    const markerCount = Object.keys(surveyMarkers).length;
+    if (!count && !markerCount) return bytes;
     const { savePDFWithAnnotationsPdfLib } = await import('../utils/pdfAnnotationsPdfLib');
     const out = await savePDFWithAnnotationsPdfLib(
       new Blob([bytes], { type: 'application/pdf' }),
@@ -78,9 +100,8 @@ export async function withStoredMarks(client, documentId, bytes) {
         actionType: 'pdf-export',
         documentId,
         callouts: deriveCalloutsFromByPage(byPage),
-        // Regular markup only, as Export PDF gives with no survey open.
-        surveyMarkers: {},
-        activeModuleId: null,
+        surveyMarkers,
+        activeModuleId: markerCount > 0 ? '*' : null,
         spaces: [],
         deletedPdfAnnotations: store.docToDeletedPdfAnnotations(doc),
       },
