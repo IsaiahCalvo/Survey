@@ -95,6 +95,7 @@ function pdfName(walkName, floor, floorCount) {
 export async function sendWalkToProject({
   supabase, walk, template, moduleId, categoryFor, entityId = null,
   addPdfToProject, pageSizes, openDoc, linkTemplate = null, newId, outlines = null,
+  onProgress = null,
   download = (path) => supabase.storage.from(WALKTHRU_BUCKET).download(path),
   now = new Date().toISOString(),
 }) {
@@ -113,7 +114,10 @@ export async function sendWalkToProject({
     }
   };
 
+  const totalFloors = floors.length;
+  let processedFloors = 0;
   for (const floor of floors) {
+    processedFloors += 1;
     const asset = floor.asset;
     if (!asset?.storage_path || String(asset.format || '').toLowerCase() !== 'pdf') {
       totals.skippedFloors.push({ floorId: floor.id, name: floor.name, reason: asset ? 'not a PDF' : 'no drawing' });
@@ -139,11 +143,13 @@ export async function sendWalkToProject({
     }
     const name = pdfName(walk.walk?.name, floor, floors.length);
     const file = typeof File === 'function' ? new File([blob], name, { type: 'application/pdf' }) : blob;
-    const pageSize = await pageSizes(blob);
+    const floorNodes = floor.nodes || [];
+    const hasNodes = floorNodes.length > 0;
+    const pageSize = hasNodes ? await pageSizes(blob) : null;
     let outlineFor = null;
-    if (outlines) {
+    if (hasNodes && outlines) {
       try {
-        const found = await outlines(blob, floor.nodes);
+        const found = await outlines(blob, floorNodes);
         if (found?.size) outlineFor = (node) => found.get(node) || null;
       } catch (outlineError) {
         // No outlines: the devices land as dots.
@@ -153,30 +159,35 @@ export async function sendWalkToProject({
     const doc = await addPdfToProject(file, name);
     if (!doc?.id) throw new Error(`Could not add "${name}" to the Project.`);
 
-    const handle = await openDoc(doc.id);
-    try {
-      const existing = handle.getSurveyMarkers() || {};
-      const out = buildWalkMarkers({
-        nodes: floor.nodes, nodeTypes: walk.nodeTypes, template, moduleId, categoryFor,
-        pageSize, existingMarkers: existing, newId, entityId, now, outlineFor,
-      });
-      handle.applySurveyMarkers({ ...existing, ...out.markers });
-      if (typeof handle.drain === 'function') await handle.drain();
-      if (typeof handle.flushSnapshot === 'function') await handle.flushSnapshot();
-      totals.documents.push({ floorId: floor.id, documentId: doc.id, added: out.added, updated: out.updated });
-      totals.added += out.added;
-      totals.updated += out.updated;
-      totals.defaultNodes += out.defaultNodes;
-      totals.unplaced += out.unplaced;
-      for (const m of out.notInModule) {
-        const entry = missing.get(m.nodeTypeId) || { ...m, count: 0 };
-        entry.count += m.count;
-        missing.set(m.nodeTypeId, entry);
+    if (hasNodes) {
+      const handle = await openDoc(doc.id);
+      try {
+        const existing = handle.getSurveyMarkers() || {};
+        const out = buildWalkMarkers({
+          nodes: floorNodes, nodeTypes: walk.nodeTypes, template, moduleId, categoryFor,
+          pageSize, existingMarkers: existing, newId, entityId, now, outlineFor,
+        });
+        handle.applySurveyMarkers({ ...existing, ...out.markers });
+        if (typeof handle.drain === 'function') await handle.drain();
+        if (typeof handle.flushSnapshot === 'function') await handle.flushSnapshot();
+        totals.documents.push({ floorId: floor.id, documentId: doc.id, added: out.added, updated: out.updated });
+        totals.added += out.added;
+        totals.updated += out.updated;
+        totals.defaultNodes += out.defaultNodes;
+        totals.unplaced += out.unplaced;
+        for (const m of out.notInModule) {
+          const entry = missing.get(m.nodeTypeId) || { ...m, count: 0 };
+          entry.count += m.count;
+          missing.set(m.nodeTypeId, entry);
+        }
+      } finally {
+        if (typeof handle.destroy === 'function') await handle.destroy();
       }
-    } finally {
-      if (typeof handle.destroy === 'function') await handle.destroy();
+    } else {
+      totals.documents.push({ floorId: floor.id, documentId: doc.id, added: 0, updated: 0 });
     }
     if (linkTemplate) await linkTemplate(doc.id);
+    if (typeof onProgress === 'function') onProgress({ done: processedFloors, total: totalFloors });
   }
 
   if (totals.documents.length === 0 && firstDownloadError) {
