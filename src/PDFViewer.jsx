@@ -17287,14 +17287,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // edits are out of sight and any tampering is detected on import (malformed →
       // review). That protects identity without breaking the user's sort/filter.
 
+      const { addSummarySheet, surveyExportBaseName } = await import('./services/excelSummarySheet.js');
+      const exportBaseName = surveyExportBaseName({
+        projectName: markLibraryStore.getState().access.projectName || pdfFile?.projectName || '',
+        documentName: pdfDisplayName,
+        templateName: selectedTemplate?.name,
+      });
+
       // Survey agent testers: a Summary sheet on a new export, not on a sync to
       // a linked workbook (Live Sync writes that one's existing sheets cell by cell).
       if (!targetPath) {
-        const [{ isSurveyAgentEnabled }, { addSummarySheet }] = await Promise.all([
-          import('./agent/surveyAgentFlag.js'),
-          import('./services/excelSummarySheet.js'),
-        ]);
-        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers });
+        const { isSurveyAgentEnabled } = await import('./agent/surveyAgentFlag.js');
+        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers, title: exportBaseName });
       }
 
       (await import('./services/excelOpeningSheet.js')).openOnFirstVisibleSheet(workbook);
@@ -17464,7 +17468,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           }
         } else {
           // Export - show location choice modal
-          const fileName = sanitizeFilename(selectedTemplate?.name || 'survey', 'survey');
+          const fileName = sanitizeFilename(exportBaseName, 'survey');
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
@@ -17483,7 +17487,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${sanitizeFilename(selectedTemplate?.name || 'survey', 'survey')}_export.xlsx`;
+        link.download = `${sanitizeFilename(exportBaseName, 'survey')}_export.xlsx`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -17502,7 +17506,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       showToast('Unable to create the Excel file. Please try again.', 'error');
     }
-  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate]);
+  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate, pdfDisplayName, pdfFile]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
