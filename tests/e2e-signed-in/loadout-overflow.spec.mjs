@@ -41,8 +41,11 @@ for (const width of [1440, 1024]) {
   test(`Text group tools stay clear of the right-hand buttons at ${width}`, async ({ page }) => {
     test.setTimeout(180_000);
     await page.setViewportSize({ width, height: 900 });
+    // 'tool-groups-five' stays off here: it splits the Text row in two, so
+    // the row fits and there is nothing to spill. This test is about the
+    // spill, on the longest row the app can have.
     await page.addInitScript((flags) => {
-      for (const key of flags) localStorage.setItem(`survey.flag.${key}`, '1');
+      for (const key of flags) localStorage.setItem(`survey.flag.${key}`, key === 'tool-groups-five' ? '0' : '1');
     }, ALL_FLAGS);
     const sheet = await seedSheet(`Loadout overflow ${width}`);
     await openSheet(page, sheet);
@@ -82,3 +85,27 @@ for (const width of [1440, 1024]) {
     await page.screenshot({ path: test.info().outputPath(`loadout-${width}-picked.png`), clip: { x: 0, y: 0, width, height: 120 } });
   });
 }
+
+// Nightly 'tool-groups-five' (owner 2026-11-26): with every tool on, the Text,
+// Measure and Insert rows each stay clear of the right-hand buttons, and the
+// group icons never move as the rows change.
+test('five groups: every row stays clear of the right-hand buttons at 1440', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript((flags) => {
+    for (const key of flags) localStorage.setItem(`survey.flag.${key}`, '1');
+  }, ALL_FLAGS);
+  const sheet = await seedSheet('Five groups 1440');
+  await openSheet(page, sheet);
+  let textLeft = null;
+  for (const group of ['Draw', 'Shapes', 'Text', 'Measure', 'Insert']) {
+    await page.locator(`[data-tool-toolbar] button[aria-label="${group}"]`).click();
+    await expect(page.locator(`[data-tool-toolbar] button[aria-label="${group}"]`)).toHaveAttribute('aria-pressed', 'true');
+    const row = await measure(page);
+    expect(row.tools.length, group).toBeGreaterThan(1);
+    for (const tool of row.tools) expect(tool.right, `${group}: ${tool.label}`).toBeLessThanOrEqual(row.exportsLeft);
+    if (textLeft === null) textLeft = row.textGroup.left;
+    expect(Math.abs(row.textGroup.left - textLeft), group).toBeLessThan(1);
+    await page.screenshot({ path: test.info().outputPath(`five-groups-${group.toLowerCase()}.png`), clip: { x: 0, y: 0, width: 1440, height: 120 } });
+  }
+});
