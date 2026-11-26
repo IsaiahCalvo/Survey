@@ -227,5 +227,15 @@ test('holding Shift hides the bar so Shift-click reaches nearby marks, and relea
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true }));
   });
   assert.equal(bar.getAttribute('data-visible'), 'true');
+
+  // Typing a capital letter in an input outside the bar keeps the bar visible.
+  const input = document.createElement('input');
+  document.body.appendChild(input);
+  input.focus();
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true }));
+  });
+  assert.equal(bar.getAttribute('data-visible'), 'true');
+  input.remove();
 });
 

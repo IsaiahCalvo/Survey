@@ -69,6 +69,7 @@ import {
 import { linkGoToLabel } from '../utils/linkTool.js';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
 import { SELECTION_CONTROLS } from '../utils/markMenuPlacement.js';
+import { isTypingTarget } from '../utils/typingTarget.js';
 import './SelectionQuickBar.css';
 
 // How many entity swatches the bar draws before "All N" (SurveyOverflowRow).
@@ -412,6 +413,7 @@ export default function SelectionQuickBar({
       if (popoverOpenRef.current) return;
       const focused = document.activeElement;
       if (focused?.closest?.('[data-selection-quick-bar], [data-selection-quick-bar-popover]')) return;
+      if (isTypingTarget(focused)) return;
       shiftHeldRef.current = true;
       place();
     };
