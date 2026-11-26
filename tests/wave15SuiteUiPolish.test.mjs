@@ -125,9 +125,9 @@ test('no undefined --focus-ring or --hover-bg tokens remain in src/ CSS and shar
 
 test('disabled buttons do not paint hover or press states in shared chrome and panel sheets', () => {
   const styles = read('src/styles.css');
-  assert.match(styles, /\.chrome-pill:not\(:disabled\):not\(\[aria-disabled='true'\]\):hover:not\(:active\)/);
+  assert.match(styles, /\.chrome-pill:hover:not\(:disabled\):not\(\[aria-disabled='true'\]\):not\(:active\)/);
   assert.match(styles, /\.chrome-pill:not\(:disabled\):not\(\[aria-disabled='true'\]\):active/);
-  assert.match(styles, /\.survey-subrow__template \.chrome-pill:not\(:disabled\):not\(\[aria-disabled='true'\]\):hover:not\(:active\)/);
+  assert.match(styles, /\.survey-subrow__template \.chrome-pill:hover:not\(:disabled\):not\(\[aria-disabled='true'\]\):not\(:active\)/);
 
   const sizeCtrl = read('src/components/AnnotationSizeControl.css');
   assert.match(sizeCtrl, /\.annotation-size-control__trigger:not\(:disabled\):hover:not\(:active\)/);
