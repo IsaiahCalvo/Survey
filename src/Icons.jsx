@@ -988,12 +988,23 @@ const ICON_RENDERERS = {
         <path d="M4 9L9 4H20V15L15 20M15 9L20 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
-    // Page scale / calibrate (owner 2026-11-13 icon pass): Lucide "ruler"
-    // (lucide-static 1.72.0, ISC) at the house 1.5 stroke. It was a flat
-    // box with ticks that read as a battery.
+    // Page scale / calibrate: Lucide "drafting-compass" (ISC), Drawboard's
+    // Calibrate. Owner 2026-11-26 (icons "inconsistent"): it was the Lucide
+    // ruler, the same glyph as the Draw row's Ruler, so two tools shared one
+    // icon.
     measureScale: (size, color, style, className) => strokeGlyph(size, color, style, className, [
-      'M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z',
-      'm14.5 12.5 2-2', 'm11.5 9.5 2-2', 'm8.5 6.5 2-2', 'm17.5 15.5 2-2',
+      'm12.99 6.74 1.93 3.44', 'M19.136 12a10 10 0 0 1-14.271 0', 'm21 21-2.16-3.84', 'm3 21 8.02-14.26',
+      'M12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
+    ]),
+    // Polylength: a stepped run with the Length glyph's end ticks. It borrowed
+    // the Polyline tool's glyph (owner 2026-11-26: one icon per thing).
+    measurePolylength: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M4 19V11h8v4h8V5', 'M2 19h4', 'M18 5h4',
+    ]),
+    // The Insert group button (Nightly 'tool-groups-five'): Lucide
+    // "circle-plus" (ISC), as Drawboard's Insert.
+    insertGroup: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z', 'M8 12h8', 'M12 8v8',
     ]),
     // The Measure group button (owner 2026-11-13: "use hugeicons ... tape"):
     // Hugeicons "tape-measure" (@hugeicons/core-free-icons 4.4.0, MIT), drawn

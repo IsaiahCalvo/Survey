@@ -222,6 +222,9 @@ export const FEATURE_FLAGS = Object.freeze({
   // the way Safari and Chrome do it on a Mac (src/utils/elasticEdges.js).
   'native-bounce': Object.freeze({ label: 'Viewer: trackpad bounce at the page edges works like Safari and Chrome on a Mac (springs back the moment your fingers lift, never hits a wall)', stage: 'beta' }),
   'view-strip': Object.freeze({ label: 'Right rail: Page fit slides out the View drawer with Fit, Pages, Scroll and the view buttons (Paper, Thin PDF lines, Page grid and more)', stage: 'beta' }),
+  // Owner 2026-11-26: regroup the top tool bar as Drawboard PDF does (Draw,
+  // Shapes, Text, Measure, Insert) instead of a 19-button Text row.
+  'tool-groups-five': Object.freeze({ label: 'Top bar: five tool groups as in Drawboard (Draw, Shapes, Text, Measure, Insert); Measure and Insert get their own rows', stage: 'beta' }),
   'share-export-one': Object.freeze({ label: 'Top bar: Share and Export are one Share button; its menu shares first, then every export', stage: 'beta' }),
   'paper-overlays': Object.freeze({ label: 'Viewer: Paper button (rail) lays notebook, graph, isometric, hex or music paper over every page; this sitting only', stage: 'beta' }),
   // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on

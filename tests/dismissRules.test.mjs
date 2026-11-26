@@ -240,8 +240,11 @@ test('every tool button carries data-tool-switch (desktop bar and phone rail)', 
   const appShell = src('AppShell.jsx');
   const viewer = src('PDFViewer.jsx');
   const phone = src('mobile/MobilePdfViewerChrome.jsx');
-  // Pan / Select and the Draw / Shapes / Survey / Text group buttons
-  assert.equal((appShell.match(/data-tool-group="true"\s*data-tool-switch="true"/g) || []).length, 5);
+  // Pan / Select and the Draw / Shapes / Survey / Text group buttons, plus
+  // Measure / Insert (Nightly 'tool-groups-five', 2026-11-26)
+  assert.equal((appShell.match(/data-tool-group="true"\s*data-tool-switch="true"/g) || []).length, 7);
+  // the Measure row's tools (Nightly 'tool-groups-five')
+  assert.match(viewer, /data-morph-icon=\{m\.iconName\}\s*data-tool-switch="true"/);
   // Select's Box / Lasso / Text modes
   assert.match(appShell, /data-morph-icon=\{getSelectModeIconName\(opt\.mode\)\}\s*data-tool-switch="true"/);
   // the tools inside each group (Draw, Shapes, Text rows)

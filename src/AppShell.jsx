@@ -150,7 +150,7 @@ import { usePolylineCurve } from './hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
-import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
+import { FIVE_GROUP_SHAPE_IDS, isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import SelectionPropertiesPanel, { PropertiesPanelDockHost } from './components/SelectionPropertiesPanel.jsx';
@@ -2800,6 +2800,13 @@ export default function App({ devPreviewReturnTab = null }) {
   const toolBarGroup = bottomToolbarApi
     ? resolveToolBarGroup({ ...bottomToolbarApi, contextTool: bottomToolbarApi.toolBarContextTool ?? bottomToolbarApi.contextTool })
     : null;
+  // Nightly 'tool-groups-five': the group button that shows lit is the group
+  // whose tools the bar shows, so a Measure (which rides the Line tool) lights
+  // Measure, not Shapes. Without the flag, the old rule.
+  const toolGroupsFive = Boolean(bottomToolbarApi?.toolGroupsFive);
+  const toolGroupPressed = (group, toolIds) => (toolGroupsFive
+    ? (bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && toolBarGroup === group)
+    : isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group, toolIds }));
   const formatRowShown = !isMobileViewer && !!isViewerVisible && showsFormatRow(bottomToolbarApi);
   const surveyRowShown = !isMobileViewer && Boolean(bottomToolbarApi?.surveyToolbar) && showsSurveyRow(bottomToolbarApi);
   const surveyToolAvailable = Boolean(bottomToolbarApi?.showSurveyPanel && bottomToolbarApi?.surveyToolbar);
@@ -3877,8 +3884,8 @@ export default function App({ devPreviewReturnTab = null }) {
                 }}
                 {...chromeTip(toolsViewOnly ? 'View only' : 'Draw', 'below')}
                 aria-disabled={toolsViewOnly || undefined}
-                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
-                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'] })}
+                className={`btn chrome-control ${toolGroupPressed('draw', ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser']) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={toolGroupPressed('draw', ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'])}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Draw"
@@ -3896,14 +3903,19 @@ export default function App({ devPreviewReturnTab = null }) {
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
                   bottomToolbarApi.setActiveCategoryDropdown('shape');
-                  if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
-                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool, { source: 'category-tab' });
+                  // Nightly 'tool-groups-five': Counter sits in Measure, and a
+                  // measure rides Line / Polygon, so arm a real Shapes tool.
+                  const shapeIds = toolGroupsFive ? FIVE_GROUP_SHAPE_IDS : ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'];
+                  const onShapeTool = shapeIds.includes(bottomToolbarApi.activeTool) && !(toolGroupsFive && bottomToolbarApi.measureMode);
+                  if (!onShapeTool) {
+                    const shapeTool = !toolGroupsFive || shapeIds.includes(bottomToolbarApi.lastShapeTool) ? bottomToolbarApi.lastShapeTool : 'rect';
+                    bottomToolbarApi.setActiveTool(shapeTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip(toolsViewOnly ? 'View only' : 'Shapes', 'below')}
                 aria-disabled={toolsViewOnly || undefined}
-                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'shape', toolIds: ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'] }) ? 'btn-active' : 'btn-default'}`}
-                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'shape', toolIds: ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'] })}
+                className={`btn chrome-control ${toolGroupPressed('shape', ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter']) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={toolGroupPressed('shape', ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'])}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Shapes"
@@ -3926,14 +3938,60 @@ export default function App({ devPreviewReturnTab = null }) {
                 }}
                 {...chromeTip(textViewOnly ? 'View only' : 'Text', 'below')}
                 aria-disabled={textViewOnly || undefined}
-                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'review', toolIds: REVIEW_TOOL_IDS }) ? 'btn-active' : 'btn-default'}`}
-                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'review', toolIds: REVIEW_TOOL_IDS })}
+                className={`btn chrome-control ${toolGroupPressed('review', REVIEW_TOOL_IDS) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={toolGroupPressed('review', REVIEW_TOOL_IDS)}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Text"
               >
                 <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
+
+              {/* Nightly 'tool-groups-five' (owner 2026-11-26): Drawboard's
+                  Measure and Insert groups. Measure arms the last measure
+                  used; Insert the last Insert tool that stays armed (Note,
+                  Page comment, Hyperlink, Snapshot). A second click on the lit
+                  button keeps the row, as Draw / Shapes / Text do. */}
+              {toolGroupsFive && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (toolsViewOnly) return;
+                      leaveAreasMode();
+                      if (toolBarGroup === 'measure' && bottomToolbarApi.activeCategoryDropdown === 'measure') return;
+                      bottomToolbarApi.armToolGroup?.('measure');
+                    }}
+                    {...chromeTip(toolsViewOnly ? 'View only' : 'Measure', 'below')}
+                    aria-disabled={toolsViewOnly || undefined}
+                    className={`btn chrome-control ${toolGroupPressed('measure') ? 'btn-active' : 'btn-default'}`}
+                    aria-pressed={toolGroupPressed('measure')}
+                    data-tool-group="true"
+                    data-tool-switch="true"
+                    aria-label="Measure"
+                  >
+                    <Icon name="tapeMeasure" size={CHROME_GLYPH} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (toolsViewOnly) return;
+                      leaveAreasMode();
+                      if (toolBarGroup === 'insert' && bottomToolbarApi.activeCategoryDropdown === 'insert') return;
+                      bottomToolbarApi.armToolGroup?.('insert');
+                    }}
+                    {...chromeTip(toolsViewOnly ? 'View only' : 'Insert', 'below')}
+                    aria-disabled={toolsViewOnly || undefined}
+                    className={`btn chrome-control ${toolGroupPressed('insert') ? 'btn-active' : 'btn-default'}`}
+                    aria-pressed={toolGroupPressed('insert')}
+                    data-tool-group="true"
+                    data-tool-switch="true"
+                    aria-label="Insert"
+                  >
+                    <Icon name="insertGroup" size={CHROME_GLYPH} />
+                  </button>
+                </>
+              )}
 
               {/* Keep Text fixed. Survey grows beside it; the loadout slides
                   over by one button and gutter. It never morphs into a tool. */}

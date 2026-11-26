@@ -20,11 +20,15 @@ test('no group is pressed while Pan or Select is armed', () => {
 
 test('tool bar buttons render aria-pressed', () => {
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
-  for (const label of ['Draw', 'Shapes', 'Text']) {
+  // The group buttons go through toolGroupPressed, which is the old
+  // isToolGroupPressed rule unless Nightly 'tool-groups-five' is on (then the
+  // group whose row shows is the lit one).
+  assert.match(shell, /const toolGroupPressed = \(group, toolIds\) => \(toolGroupsFive\s*\?[\s\S]{0,200}?: isToolGroupPressed\(\{/);
+  for (const label of ['Draw', 'Shapes', 'Text', 'Measure', 'Insert']) {
     const at = shell.indexOf(`aria-label="${label}"`);
     assert.ok(at > 0, label);
     const block = shell.slice(shell.lastIndexOf('<button', at), at);
-    assert.match(block, /aria-pressed=\{isToolGroupPressed\(/, `${label} button sets aria-pressed`);
+    assert.match(block, /aria-pressed=\{toolGroupPressed\(/, `${label} button sets aria-pressed`);
   }
   assert.match(shell, /className=\{`btn chrome-control \$\{isActive \? 'btn-active' : 'btn-default'\}`\}\s*aria-pressed=\{isActive\}/);
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
