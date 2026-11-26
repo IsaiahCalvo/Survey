@@ -430,6 +430,7 @@ import PagePinsHost from './components/pins/PagePinsHost.jsx';
 import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
+import { ARM_PAGE_COMMENT_EVENT, setPagePinsState } from './services/pagePinsStore.js';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
@@ -27999,6 +28000,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (tool) setActiveTool(tool);
     }
   }, [lastMeasureKind, lastInsertTool, noteToolEnabled, pinsDocOn, linkToolOn, snapshotToolEnabled]);
+
+  // Nightly 'page-comments-one': the Comments panel's + arms the Page comment
+  // tool here (a Comment pin), so a page comment always has a spot, as in
+  // Drawboard. Only the viewer in front takes it; with no pins on this
+  // document the panel falls back to its own page thread.
+  useEffect(() => {
+    if (!isActive || !pinsDocOn) return undefined;
+    const onArm = (event) => {
+      event.preventDefault();
+      setPagePinsState((s) => ({ kind: 'comment', draft: s.draft ? { ...s.draft, kind: 'comment' } : null }));
+      setStampPickerOpen(false);
+      setActiveTool('pin');
+    };
+    window.addEventListener(ARM_PAGE_COMMENT_EVENT, onArm);
+    return () => window.removeEventListener(ARM_PAGE_COMMENT_EVENT, onArm);
+  }, [isActive, pinsDocOn, setActiveTool]);
 
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid

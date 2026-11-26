@@ -28,6 +28,21 @@ let state = {
 };
 const listeners = new Set();
 
+// Fired on window (cancelable) to arm the Page comment tool from outside the
+// viewer, such as the Comments panel's + (Nightly 'page-comments-one'). The
+// viewer in front calls preventDefault when it took it.
+export const ARM_PAGE_COMMENT_EVENT = 'survey:arm-page-comment';
+
+/** Ask the viewer in front to arm the Page comment tool. True when it did. */
+export function requestPageCommentPin() {
+  try {
+    const event = new CustomEvent(ARM_PAGE_COMMENT_EVENT, { cancelable: true });
+    return window.dispatchEvent(event) === false;
+  } catch {
+    return false;
+  }
+}
+
 export function getPagePinsState() {
   return state;
 }
