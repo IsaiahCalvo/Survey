@@ -28729,11 +28729,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
-      // Keys belong to an open modal (shortcut sheet, any dialog card): no
-      // tool letters, zoom or Delete acting on the page behind it.
-      // Only a modal that holds focus counts: one still fading out (or
-      // mounted but idle) must not swallow the next tool key.
-      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement) || d.contains(e.target))) return;
+      // Keys belong to an open modal (shortcut sheet, New note, any dialog card):
+      // no tool letters, zoom or Delete acting on the page behind it (#1730).
+      // Only a closing / hidden / inert exit copy is ignored.
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')].some((d) => (
+        !d.closest('[data-motion-state="closing"], [aria-hidden="true"], [inert]')
+        && (d.contains(document.activeElement) || d.contains(e.target) || d.offsetWidth > 0 || d.offsetHeight > 0 || d.getClientRects().length > 0)
+      ))) return;
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =
