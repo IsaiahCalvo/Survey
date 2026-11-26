@@ -22,7 +22,7 @@ import Spinner from '../components/Spinner';
 import { Z_INDEX } from '../theme';
 import { matchCategories } from '../suite/walkthruHandoff.js';
 import {
-  canAddToModule, categoryForPicks, keepPicks, linkRows, linksToSave, moduleCategories, startingPicks,
+  canAddToModule, categoryForPicks, keepPicks, linkedRows, linkRows, linksToSave, moduleCategories, startingPicks,
 } from '../suite/categoryLinks.js';
 import '../components/PdfToolsDialog.css';
 import '../components/ExportPdfDialog.css';
@@ -285,10 +285,11 @@ export default function WalkthruHandoffDialog({
               <div className="xpdf-section" data-walkthru-handoff-match="">
                 <span className="xpdf-label">Categories</span>
                 {usedTypes.length === 0 && <span>{fromJob ? 'This job file has no devices with a Category.' : 'This walk has no nodes with a Category.'}</span>}
-                {Object.keys(match.linked).map((typeId) => {
-                  const type = usedTypes.find((t) => t.id === typeId);
-                  return <div key={typeId} className="wt-link__linked">{type?.name} ({nodeCount.get(typeId) || 0}): linked in the library</div>;
-                })}
+                {linkedRows(match, usedTypes, nodeCount, template, moduleId).map((item) => (
+                  <div key={item.nodeTypeId} className="wt-link__linked">
+                    {item.name} ({item.count}): {item.categoryName ? `linked in the library as ${item.categoryName}` : 'linked in the library'}
+                  </div>
+                ))}
                 {rows.length > 0 && (
                   <div className="wt-link" role="table" aria-label={fromJob ? `Link ${walk?.source || 'job file'} Categories to this Module` : 'Link Walkthru Categories to this Module'} data-walkthru-link-table="">
                     <div className="wt-link__row wt-link__row--head" role="row">
