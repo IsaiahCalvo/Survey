@@ -184,10 +184,22 @@ const CommentBox = forwardRef(function CommentBox({ people, placeholder, initial
 function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, onCopyLink, onReply, onResolve = null, editing, setEditing, people, tip }) {
   const author = peopleById.get(comment.authorId);
   const boxRef = useRef(null);
+  const bodyRef = useRef(null);
   const [canSave, setCanSave] = useState(true);
   // Right-click: the comment's own actions (owner 2026-11-12: no browser
   // menu anywhere; a proper menu where there are actions).
   const [menuPoint, setMenuPoint] = useState(null);
+  // #1770: React delegates onClick to #root, so mobile browsers' touch
+  // adjustment treated .comments-item__body as non-interactive and snapped taps
+  // onto the Resolve button right below it. A direct click listener marks the
+  // body itself as a tap candidate while letting clicks bubble to openThread.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || editing) return undefined;
+    const noop = () => {};
+    el.addEventListener('click', noop);
+    return () => el.removeEventListener('click', noop);
+  }, [editing]);
   if (comment.deletedAt) {
     return (
       <div className="comments-item comments-item--deleted" data-comment-id={comment.id}>
@@ -278,7 +290,7 @@ function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, on
           onSubmit={(body, mentions) => onEdit(comment, body, mentions)}
         />
       ) : (
-        <div className="comments-item__body" data-comment-body="true">
+        <div ref={bodyRef} className="comments-item__body" data-comment-body="true">
           {commentPieces(comment.body, comment.mentions, peopleById).map((piece, i) => (
             piece.mention
               ? <span key={i} className="comments-mention">{piece.text}</span>
@@ -479,6 +491,7 @@ export default function CommentsPanel({
       if (replyingTo === thread.id) setReplyingTo(null);
       if (!quiet) {
         showToast(resolved ? 'Thread resolved' : 'Thread reopened', 'success', {
+          duration: 6000,
           action: { label: 'Undo', onClick: () => { setResolved(thread, !resolved, { quiet: true }); } },
         });
       }
