@@ -237,7 +237,11 @@ import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProx
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { isInsertedImage } from '../utils/insertedImage.js';
 import { canGroupResizeMember } from '../utils/groupResize.js';
-import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
+import {
+  isClientPointNearRect,
+  shouldArmTextSelectManipulation,
+  TEXT_RANGE_HANDLE_POINTER_PADDING,
+} from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
@@ -960,6 +964,7 @@ const SVGAnnotationLayerBody = memo(({
   // (pageNumber, { indices, calloutIds, markerIds }, 'copy' | 'cut').
   onCopyFamily = null,
   onDuplicateFamily = null,
+  textDragModeActive = false,
 }) => {
   // The app's one shared tooltip (components/Tooltip.jsx), never a native title=.
   const layerTip = useTooltip();
@@ -1884,7 +1889,18 @@ const SVGAnnotationLayerBody = memo(({
   const isPointNearCurrentSelection = useCallback((clientX, clientY) => {
     const root = svgRef.current;
     if (!root) return false;
-    const nodes = new Set(root.querySelectorAll('[data-text-range-handle-hit-target="true"]'));
+    // Check visual text-range pills with a tight margin instead of the 44 px
+    // touch hit pad + 14 px margin (±36 px), which swallowed drags starting on
+    // the adjacent word right beside an underline and stretched it into one
+    // merged mark (#1732).
+    const textRangeVisuals = root.querySelectorAll('[data-text-range-handle-visual]');
+    for (const handle of textRangeVisuals) {
+      const rect = handle.getBoundingClientRect?.();
+      if (rect?.width > 0 && rect?.height > 0 && isClientPointNearRect(clientX, clientY, rect, TEXT_RANGE_HANDLE_POINTER_PADDING)) {
+        return true;
+      }
+    }
+    const nodes = new Set();
     for (const overlay of root.querySelectorAll('.svg-selection-overlay')) {
       if (!overlay.querySelector('[data-text-range-handle-hit-target]')) nodes.add(overlay);
     }
@@ -1921,8 +1937,8 @@ const SVGAnnotationLayerBody = memo(({
   }, [effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerIds]);
 
   useEffect(() => {
-    if (activeTool !== 'text-select') {
-      if (textSelectManipulationArmed) setTextSelectManipulationArmed(false);
+    if (!shouldArmTextSelectManipulation({ activeTool, textDragModeActive })) {
+      if (textSelectManipulationArmed) applyTextSelectPointerOwnership(false);
       return undefined;
     }
     const updatePointerOwnership = (event) => {
@@ -1965,7 +1981,7 @@ const SVGAnnotationLayerBody = memo(({
         if (textLayer) textLayer.style.pointerEvents = '';
       }
     };
-  }, [activeTool, applyTextSelectPointerOwnership, interactionState, isPointNearCurrentSelection, textSelectManipulationArmed]);
+  }, [activeTool, applyTextSelectPointerOwnership, interactionState, isPointNearCurrentSelection, textDragModeActive, textSelectManipulationArmed]);
 
   useLayoutEffect(() => {
     if (activeTool !== 'text-select' || interactionState !== 'idle') return;

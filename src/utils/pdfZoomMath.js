@@ -121,6 +121,39 @@ export function getWidthFitMinimumScale({
   return Math.max(absoluteMinimumScale, Math.min(maximumScale, scale));
 }
 
+// Chromium's single-canvas / GPU texture dimension ceiling (matches
+// MAX_CANVAS_DIM in PdfjsViewerContainer). Capping rendered page CSS dimensions
+// to this ceiling keeps large architectural sheets (e.g. 36x24, 42x30) from
+// zooming into an unrenderable blank void at ~2800%-4000% while still giving
+// ~20-23x detail magnification over fit-page (#1718).
+export const MAX_RENDERED_PAGE_DIMENSION_PX = 16384;
+
+export function getDocumentMaximumScale({
+  pageWidths = [],
+  pageHeights = [],
+  absoluteMaximumScale = ABSOLUTE_MAX_SCALE,
+  minimumScale = ABSOLUTE_MIN_SCALE,
+  maxRenderedDimensionPx = MAX_RENDERED_PAGE_DIMENSION_PX,
+} = {}) {
+  const hardMax = Number.isFinite(Number(absoluteMaximumScale)) && Number(absoluteMaximumScale) > 0
+    ? Number(absoluteMaximumScale)
+    : ABSOLUTE_MAX_SCALE;
+  const floor = Number.isFinite(Number(minimumScale)) && Number(minimumScale) > 0
+    ? Math.min(Number(minimumScale), hardMax)
+    : ABSOLUTE_MIN_SCALE;
+  const dims = [
+    ...(Array.isArray(pageWidths) ? pageWidths : []),
+    ...(Array.isArray(pageHeights) ? pageHeights : []),
+  ].map(Number).filter((dim) => Number.isFinite(dim) && dim > 0);
+  const maxDimPx = Number(maxRenderedDimensionPx);
+  if (dims.length === 0 || !Number.isFinite(maxDimPx) || maxDimPx <= 0) {
+    return hardMax;
+  }
+  const largestDim = Math.max(...dims);
+  const safeScale = maxDimPx / largestDim;
+  return Math.max(floor, Math.min(hardMax, safeScale));
+}
+
 export function normalizeWheelDelta(deltaY, deltaMode = 0, viewportHeight = 800) {
   const rawDelta = Number(deltaY) || 0;
   if (deltaMode === 1) return rawDelta * WHEEL_LINE_HEIGHT_PX;

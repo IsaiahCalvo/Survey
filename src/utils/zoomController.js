@@ -115,20 +115,28 @@ export function createZoomController({
   getPageSize,
   getCurrentScale,
   getMinimumScale,
+  getMaximumScale,
   setScale,
   onModeChange,
   onManualScaleChange,
   persistPreferences
 } = {}) {
   const clampControllerScale = (value) => {
-    const globallyClamped = clampScale(value);
+    let clamped = clampScale(value);
+    const dynamicMaximum = typeof getMaximumScale === 'function'
+      ? Number(getMaximumScale())
+      : MAX_SCALE;
+    const effectiveMax = Number.isFinite(dynamicMaximum) && dynamicMaximum > MIN_SCALE
+      ? Math.min(dynamicMaximum, MAX_SCALE)
+      : MAX_SCALE;
     const dynamicMinimum = typeof getMinimumScale === 'function'
       ? Number(getMinimumScale())
       : MIN_SCALE;
-    if (!Number.isFinite(dynamicMinimum) || dynamicMinimum <= MIN_SCALE) {
-      return globallyClamped;
-    }
-    return Math.max(globallyClamped, Math.min(dynamicMinimum, MAX_SCALE));
+    const effectiveMin = Number.isFinite(dynamicMinimum) && dynamicMinimum > MIN_SCALE
+      ? Math.min(dynamicMinimum, effectiveMax)
+      : MIN_SCALE;
+    clamped = Math.min(clamped, effectiveMax);
+    return Math.max(clamped, effectiveMin);
   };
   let mode = isValidMode(initialMode) ? initialMode : DEFAULT_ZOOM_PREFERENCES.mode;
   let manualScale = clampControllerScale(
