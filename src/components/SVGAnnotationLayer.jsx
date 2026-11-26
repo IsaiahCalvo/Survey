@@ -1345,7 +1345,7 @@ const SVGAnnotationLayerBody = memo(({
       || (pendingSelection.toggleSelection === true && selectedIds.has(pendingSelection.annotationIndex))) {
       selectAnnotations([...selectedIds].filter((index) => index !== pendingSelection.annotationIndex));
     } else {
-      selectAnnotation(pendingSelection.annotationIndex, pendingSelection.addToSelection === true);
+      selectAnnotation(pendingSelection.annotationIndex, pendingSelection.addToSelection === true, { expandGroup: true });
     }
   }, [pendingSelection, pageNumber, selectAnnotation, selectAnnotations, deselectAll]);
 
@@ -1543,7 +1543,7 @@ const SVGAnnotationLayerBody = memo(({
       setSelectedSurveyMarkerId(null);
       if (isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) onSelectedCalloutIdsChange?.(new Set());
     }
-    selectAnnotation(press.index, add);
+    selectAnnotation(press.index, add, { expandGroup: true });
   };
   const applyPressFallbackRef = useRef(applyPressFallback);
   applyPressFallbackRef.current = applyPressFallback;

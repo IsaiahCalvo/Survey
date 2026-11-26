@@ -4394,6 +4394,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // declared further down; read only when a menu opens).
   const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu({
     getPageObjects: (pageNumber) => annotationsByPageRef.current?.[pageNumber]?.objects || null,
+    isActive,
   });
   const selectedNativeTextMarkupRef = useRef(null);
   // UX: pan-mode quick-click selection command. Set by the document-level
@@ -4501,6 +4502,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // handler's stopPropagation cannot starve this path either. Pan-drag is
   // unaffected: moves > QUICK_CLICK_PX bail out here and pan normally.
   useEffect(() => {
+    if (isActive === false) return undefined;
     // 4px tolerance matches trackpad + mouse in local testing. Tune here if
     // users report accidental drags. Too low → hair-trigger drags fire as
     // clicks; too high → actual pan gestures get treated as selection taps.
@@ -4591,6 +4593,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         panQuickClickAutoSelectAtRef.current = Date.now();
         // w41: the callout REPLACES any mark still picked, or the two would
         // form a restyle group the user never made (review 2026-09-25).
+        const clickedCallout = (calloutsRef.current || []).find((c) => c && c.id === hit.calloutId) || null;
+        const calloutGid = getCalloutGroupId(clickedCallout);
+        if (calloutGid && hit.pageNumber != null) {
+          const pageObj = annotationsByPageRef.current?.[hit.pageNumber];
+          const pageCallouts = (calloutsRef.current || []).filter((c) => c && c.pageNumber === hit.pageNumber);
+          const members = findGroupMembers(pageObj, pageCallouts, [calloutGid]);
+          if (members.annotationIndices.length > 0) {
+            setPendingSvgSelection({ pageNumber: hit.pageNumber, annotationIndices: members.annotationIndices, tick: Date.now() });
+          } else if (!e.shiftKey) {
+            setAnnotationSelectionClearToken((token) => token + 1);
+          }
+          setSelectedCalloutIds((previous) => {
+            const next = new Set(e.shiftKey && previous ? previous : []);
+            (members.calloutIds.length > 0 ? members.calloutIds : [hit.calloutId]).forEach((cid) => next.add(cid));
+            return next;
+          });
+          return;
+        }
         if (!e.shiftKey) setAnnotationSelectionClearToken((token) => token + 1);
         setSelectedCalloutIds((previous) => {
           const next = new Set(e.shiftKey && previous ? previous : []);
@@ -4630,7 +4650,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange, resolveCalloutPageNumber]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, isActive, resolveCalloutPageNumber]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
   // UX 2026-10-02 (owner): which tools listen comes from the selection
