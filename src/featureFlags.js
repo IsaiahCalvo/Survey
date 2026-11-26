@@ -225,6 +225,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // Owner 2026-11-26: regroup the top tool bar as Drawboard PDF does (Draw,
   // Shapes, Text, Measure, Insert) instead of a 19-button Text row.
   'tool-groups-five': Object.freeze({ label: 'Top bar: five tool groups as in Drawboard (Draw, Shapes, Text, Measure, Insert); Measure and Insert get their own rows', stage: 'beta' }),
+  'page-comments-one': Object.freeze({ label: 'Comments: one way to comment on a page. The Comments panel\'s + places a Page comment pin, and pin threads in the panel say what they are and open their card', stage: 'beta' }),
   'share-export-one': Object.freeze({ label: 'Top bar: Share and Export are one Share button; its menu shares first, then every export', stage: 'beta' }),
   'paper-overlays': Object.freeze({ label: 'Viewer: Paper button (rail) lays notebook, graph, isometric, hex or music paper over every page; this sitting only', stage: 'beta' }),
   // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on

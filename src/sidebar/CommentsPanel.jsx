@@ -48,6 +48,10 @@ import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { historyMarkFilterNoun } from '../utils/historyMarkFilter.js';
 import { historyAnnotationInkBox } from '../utils/historyGeometry.js';
 import { measureMarkBox } from '../components/revisions/historyPageOverlay.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { PinKindGlyph } from '../components/pins/PinGlyphs.jsx';
+import { requestPageCommentPin, setPagePinsState } from '../services/pagePinsStore.js';
+import { PIN_KIND_LABELS, pinCode } from '../utils/pagePins.js';
 
 const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -493,16 +497,39 @@ export default function CommentsPanel({
 
   const itemProps = { peopleById, people, canWrite, onEdit: edit, onDelete: remove, onCopyLink: copyLink, setEditing, tip };
 
-  const newPageComment = () => setDraft({ markId: null, pageNumber: pageNum || 1 });
+  // Nightly 'page-comments-one': one way to comment on a page, as Drawboard
+  // does. The + arms the viewer's Page comment tool, so the comment gets a
+  // spot (a pin) and shows here like any other thread. Where pins are off
+  // (a file on this device, no account) it starts a page thread as before.
+  const pageCommentsOne = isFeatureOn('page-comments-one');
+  const newPageComment = () => {
+    if (pageCommentsOne && requestPageCommentPin()) {
+      showToast('Click the page where the comment goes.', 'info');
+      return;
+    }
+    setDraft({ markId: null, pageNumber: pageNum || 1 });
+  };
+  const newPageCommentLabel = pageCommentsOne ? 'Page comment' : `Comment on page ${pageNum || 1}`;
+  // A pin thread names its kind and opens its card on the page.
+  const pinOf = (thread) => (pageCommentsOne && !thread.markId ? thread.root.pin || null : null);
+  const pinLabel = (pin, pageNumber) => {
+    const code = pinCode(pin);
+    return `${code ? `${code} · ` : ''}${PIN_KIND_LABELS[pin.kind] || 'Comment'} on page ${pageNumber}`;
+  };
+  const showThread = (thread) => {
+    setActiveThreadId(thread.id);
+    goTo(thread.markId, thread.pageNumber);
+    if (pinOf(thread)) setPagePinsState({ openId: thread.id });
+  };
   const newButton = canWrite && !draft ? (
     headActionsHost
       ? createPortal(
-        <SectionIconButton action="add" label={`Comment on page ${pageNum || 1}`} data-comment-new="true" onClick={newPageComment} />,
+        <SectionIconButton action="add" label={newPageCommentLabel} data-comment-new="true" onClick={newPageComment} />,
         headActionsHost,
       )
       : (
         <button type="button" className="comments-text-btn comments-new" data-comment-new="true" onClick={newPageComment}>
-          <Icon name="plus" size={14} /> Comment on page {pageNum || 1}
+          <Icon name="plus" size={14} /> {newPageCommentLabel}
         </button>
       )
   ) : null;
@@ -510,8 +537,7 @@ export default function CommentsPanel({
   const openThread = (event, thread) => {
     if (event.target.closest?.('button, textarea, input, a, [role="listbox"]')) return;
     if (typeof window !== 'undefined' && String(window.getSelection?.() || '')) return;
-    setActiveThreadId(thread.id);
-    goTo(thread.markId, thread.pageNumber);
+    showThread(thread);
   };
 
   const filter = threads.length > 0 ? (
@@ -594,11 +620,14 @@ export default function CommentsPanel({
           <button
             type="button"
             className="comments-thread__target comments-thread__target--link"
-            {...tip(thread.markId ? 'Show on the page' : `Go to page ${thread.pageNumber}`)}
-            onClick={() => { setActiveThreadId(thread.id); goTo(thread.markId, thread.pageNumber); }}
+            {...tip(thread.markId || pinOf(thread) ? 'Show on the page' : `Go to page ${thread.pageNumber}`)}
+            onClick={() => showThread(thread)}
+            data-comment-pin={pinOf(thread)?.kind}
           >
-            <Icon name={markTarget(thread.markId, thread.pageNumber).icon} size={13} />
-            <span>{markLabel(thread.markId, thread.pageNumber)}</span>
+            {pinOf(thread)
+              ? <PinKindGlyph kind={pinOf(thread).kind} size={13} />
+              : <Icon name={markTarget(thread.markId, thread.pageNumber).icon} size={13} />}
+            <span>{pinOf(thread) ? pinLabel(pinOf(thread), thread.pageNumber) : markLabel(thread.markId, thread.pageNumber)}</span>
           </button>
           {thread.root.resolvedAt && (
             <div className="comments-resolved-note" data-comment-resolved-note="true">
