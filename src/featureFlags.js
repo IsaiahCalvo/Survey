@@ -217,6 +217,10 @@ export const FEATURE_FLAGS = Object.freeze({
   // Owner 2026-11-23: the right rail is too tall below Page fit, and Share
   // and Export are one job. Both match Walkthru (SUITE-RULES, "Where things
   // sit").
+  // Owner 2026-11-25: "the page spring-back is not 100% like Drawboard ...
+  // This should be some native thing." Trackpad bounce at the page edges done
+  // the way Safari and Chrome do it on a Mac (src/utils/elasticEdges.js).
+  'native-bounce': Object.freeze({ label: 'Viewer: trackpad bounce at the page edges works like Safari and Chrome on a Mac (springs back the moment your fingers lift, never hits a wall)', stage: 'beta' }),
   'view-strip': Object.freeze({ label: 'Right rail: Page fit slides out the View drawer with Fit, Pages, Scroll and the view buttons (Paper, Thin PDF lines, Page grid and more)', stage: 'beta' }),
   'share-export-one': Object.freeze({ label: 'Top bar: Share and Export are one Share button; its menu shares first, then every export', stage: 'beta' }),
   'paper-overlays': Object.freeze({ label: 'Viewer: Paper button (rail) lays notebook, graph, isometric, hex or music paper over every page; this sitting only', stage: 'beta' }),

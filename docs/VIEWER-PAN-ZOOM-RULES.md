@@ -41,6 +41,13 @@ the live app driven headless with mouse, touchpad (wheel) and drag input.
    on iPhone). Past the top or bottom of the document, or past a side when the
    page is wider than the view, the page stretches with resistance and springs
    home. Numbers and tuning: `src/utils/elasticEdges.js` and #1201.
+   - Nightly flag `native-bounce` (owner 2026-11-25, "this should be some
+     native thing"): a trackpad stretch follows Safari and Chrome on a Mac.
+     It springs home the moment the fingers lift (on Blink / WebKit's Mac
+     curve), ignores the momentum after that, nears a soft 30% cap without
+     ever sitting flat on it, and never lets go while the fingers still pull.
+     Checked by replaying real trackpad recordings:
+     `tests/macWheelBounce.test.mjs`.
 4. **Up and down always has the spring**, even for a document that fits on
    screen, so you can feel the end of the document. Sideways only has it when
    there is something to scroll to (rule 1).
