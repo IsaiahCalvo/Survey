@@ -223,3 +223,73 @@ export function withCategoryAdded(templates, templateId, moduleId, name, categor
   });
   return added ? { templates: out, categoryId } : null;
 }
+
+export const JOB_CATEGORY_LINKS_STORAGE_KEY = 'survey.suite.jobCategoryLinks.v1';
+
+const jobLinkScopeKey = (templateId, moduleId) => {
+  const t = clean(String(templateId ?? ''));
+  const m = clean(String(moduleId ?? ''));
+  return t && m ? `${t}::${m}` : null;
+};
+
+const readJobCategoryLinksStore = (storage) => {
+  if (!storage || typeof storage.getItem !== 'function') return {};
+  try {
+    const raw = storage.getItem(JOB_CATEGORY_LINKS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * Remembered Plot job-file Category links for one (templateId, moduleId),
+ * keyed by lowercased Category name -> Survey Category id (#1603).
+ */
+export function loadSavedJobCategoryLinks(
+  templateId,
+  moduleId,
+  storage = typeof localStorage !== 'undefined' ? localStorage : null,
+) {
+  const scope = jobLinkScopeKey(templateId, moduleId);
+  if (!scope) return {};
+  const all = readJobCategoryLinksStore(storage);
+  const entry = all[scope];
+  return entry && typeof entry === 'object' && !Array.isArray(entry) ? { ...entry } : {};
+}
+
+/**
+ * Save confirmed Plot job-file Category links for (templateId, moduleId) so
+ * re-adding the same job file matches automatically without re-mapping (#1603).
+ */
+export function saveJobCategoryLinks(
+  templateId,
+  moduleId,
+  links = [],
+  storage = typeof localStorage !== 'undefined' ? localStorage : null,
+) {
+  const scope = jobLinkScopeKey(templateId, moduleId);
+  const valid = (links || []).filter((l) => clean(l?.nodeTypeName) && l?.categoryId != null);
+  if (!scope || valid.length === 0) return { saved: [], notSaved: [] };
+  const all = readJobCategoryLinksStore(storage);
+  const current = all[scope] && typeof all[scope] === 'object' && !Array.isArray(all[scope])
+    ? { ...all[scope] }
+    : {};
+  const saved = [];
+  for (const link of valid) {
+    const key = clean(link.nodeTypeName).toLowerCase();
+    current[key] = link.categoryId;
+    saved.push(link);
+  }
+  all[scope] = current;
+  try {
+    if (storage && typeof storage.setItem === 'function') {
+      storage.setItem(JOB_CATEGORY_LINKS_STORAGE_KEY, JSON.stringify(all));
+    }
+  } catch {
+    return { saved: [], notSaved: valid.map((link) => ({ link, reason: 'could not save in this browser' })) };
+  }
+  return { saved, notSaved: [] };
+}
+
