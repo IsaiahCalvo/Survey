@@ -333,7 +333,8 @@ test('#1773: AuthContext and YDocProvider enforce backoff, dedupe, and visibilit
   assert.match(authSrc, /AUTH_BOOT_RETRY_BASE_MS = 5_000/);
   assert.match(authSrc, /AUTH_BOOT_RETRY_MAX_MS = 60_000/);
   assert.match(authSrc, /bootBackoff\.recordFailure\(\)/);
-  assert.match(authSrc, /window\.addEventListener\('online', readBootSessionOnOnline\)/);
+  assert.match(authSrc, /window\.addEventListener\('online', readBootSession\)/);
+  assert.match(authSrc, /trigger\?\.type === 'online'/);
   assert.match(authSrc, /isTabVisible\(\) \|\| !isDeviceOnline\(\)/);
 
   const ydocSrc = readFileSync(new URL('../src/components/collab/YDocProvider.jsx', import.meta.url), 'utf8');

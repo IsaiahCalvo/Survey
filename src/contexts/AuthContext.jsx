@@ -512,14 +512,9 @@ export const AuthProvider = ({ children }) => {
       bootWaitingForRetry = false;
       clearBootRetryTimer();
       bootBackoff.reset();
-      window.removeEventListener('online', readBootSessionOnOnline);
+      window.removeEventListener('online', readBootSession);
       document.removeEventListener('visibilitychange', readBootSessionWhenVisible);
     };
-    function readBootSessionOnOnline() {
-      if (bootDone || !bootWaitingForRetry) return;
-      bootBackoff.reset();
-      if (isTabVisible()) readBootSession({ force: true });
-    }
     function readBootSessionWhenVisible() {
       if (bootDone || !bootWaitingForRetry || !isTabVisible() || !isDeviceOnline()) return;
       if (bootBackoff.isBlocked()) {
@@ -528,8 +523,17 @@ export const AuthProvider = ({ children }) => {
       }
       readBootSession();
     }
-    function readBootSession({ force = false } = {}) {
-      if (bootDone || bootReading) return;
+    function readBootSession(trigger) {
+      const isOnlineEvent = trigger?.type === 'online';
+      const force = Boolean(trigger?.force) || isOnlineEvent;
+      if (bootDone) return;
+      if (isOnlineEvent) {
+        if (!bootWaitingForRetry) return;
+        bootBackoff.reset();
+        clearBootRetryTimer();
+        if (!isTabVisible()) return;
+      }
+      if (bootReading) return;
       if (!force && bootWaitingForRetry && (!isTabVisible() || !isDeviceOnline())) return;
       if (!force && bootBackoff.isBlocked()) {
         scheduleBootRetry(bootBackoff.remainingMs());
@@ -547,7 +551,7 @@ export const AuthProvider = ({ children }) => {
             const delayMs = bootBackoff.recordFailure();
             if (firstWait) {
               authDebug('initial session read is waiting for the network');
-              window.addEventListener('online', readBootSessionOnOnline);
+              window.addEventListener('online', readBootSession);
               document.addEventListener('visibilitychange', readBootSessionWhenVisible);
             }
             scheduleBootRetry(delayMs);
