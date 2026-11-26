@@ -199,10 +199,10 @@
   }
   /* The sync status chip is a role="button" that opens the sync details, but it
      paints its own fill inline and so never showed that it was clickable.
-     Targeted by aria-controls because the chip carries no class. The worded
-     pill (expanded rail) keeps that plate; the lone spinner in the collapsed
-     rail is an icon and follows section 5. */
-  [aria-controls='sync-status-details']:not([data-glyph-only]):not(.chrome-icon-btn):hover:not(:active) {
+     Targeted by data-sync-status-chip (and aria-controls while expanded). The
+     worded pill (expanded rail) keeps that plate; the lone spinner in the
+     collapsed rail is an icon and follows section 5. */
+  :is([data-sync-status-chip], [aria-controls='sync-status-details']):not([data-glyph-only]):not(.chrome-icon-btn):hover:not(:active) {
     background-color: var(--hover) !important;
   }
 }
@@ -679,4 +679,24 @@ html[data-focus-ring='pointer'] :is(.tab-strip-list__open, .hero-swatch, .docume
 :is([role='dialog'], [role='alertdialog']) :is(h1, h2, h3, label, legend, .xpdf-label, .pdft-h, .guest-links__title) {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* ==========================================================================
+   ENABLED PLACEHOLDERS CLEAR 4.5:1 CONTRAST (SUITE-RULES / WCAG AA)
+
+   Browser default #757575 measures 3.3–4.0:1 on Survey's dark surfaces, and
+   --text-disabled is deliberately below 3:1 for disabled controls only.
+   --text-3 clears 4.5:1 on every dark surface (--surface-0 through
+   --surface-3) in both the default and suite palettes. Higher-specificity
+   selectors cover AuthModal and hub mobile inline inputs without adding
+   conflicts to their stylesheets.
+   ========================================================================== */
+:is(input, textarea):not(:disabled):not([aria-disabled='true'])::placeholder {
+  color: var(--text-3);
+  opacity: 1;
+}
+.auth-form-group input:not(:disabled)::placeholder,
+.survey-hub .templates-mobile-inline-input:not(:disabled)::placeholder {
+  color: var(--text-3);
+  opacity: 1;
 }

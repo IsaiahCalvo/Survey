@@ -98,18 +98,25 @@
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
 .survey-hub .home-tile {
+  position: relative;
   display: flex; flex-direction: column; min-width: 0; border-radius: var(--radius-md);
-  border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; overflow: hidden;
+  border: 1px solid var(--border); background: var(--surface-2); overflow: hidden;
+}
+.survey-hub .home-tile__trigger {
+  display: flex; flex-direction: column; align-items: stretch; flex: 1; width: 100%; min-width: 0;
+  padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left;
+  cursor: pointer; border-radius: inherit;
 }
 /* Selected is a surface step and a stronger edge; gold stays on ink only
    (tests/selectedStateGoldInkOnly.test.mjs). */
 .survey-hub .home-tile.is-selected { background: var(--surface-3); border-color: var(--border-strong); }
-.survey-hub .home-tile__thumb { height: 150px; background: var(--surface-1); }
-.survey-hub .home-tile__foot { display: flex; align-items: flex-start; gap: 4px; padding: 8px 4px 8px 10px; }
-.survey-hub .home-tile__text { flex: 1; min-width: 0; }
-.survey-hub .home-tile__name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.survey-hub .home-tile__meta { margin-top: 2px; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.survey-hub .home-tile__thumb { display: block; width: 100%; height: 150px; background: var(--surface-1); }
+.survey-hub .home-tile__foot { display: flex; align-items: flex-start; gap: 4px; padding: 8px 34px 8px 10px; }
+.survey-hub .home-tile__text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.survey-hub .home-tile__name { display: block; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.survey-hub .home-tile__meta { display: block; margin-top: 2px; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .survey-hub .home-tile__tags { display: flex; gap: 4px; margin-top: 6px; overflow: hidden; }
+.survey-hub .home-tile__more { position: absolute; top: 156px; right: 4px; z-index: 1; }
 
 /* Phone card tags: a line of chips under the details. */
 .survey-hub .mobile-card-tags { display: flex; gap: 4px; margin-top: 4px; overflow: hidden; }
@@ -121,6 +128,7 @@
      height and cut off; the list scrolls instead. */
   .survey-hub .home-filter-chips { flex: none; padding: 10px 10px 8px; scroll-padding-inline: 10px; }
   .survey-hub .home-tile__thumb { height: 130px; }
+  .survey-hub .home-tile__more { top: 136px; }
   .survey-hub .home-tile__name { font-size: 14px; }
   .survey-hub .home-tile__meta { font-size: 12px; }
   .survey-hub .home-view-menu { position: fixed; top: auto; right: 12px; }

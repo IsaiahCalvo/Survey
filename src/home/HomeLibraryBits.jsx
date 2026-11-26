@@ -276,34 +276,40 @@ export function HomeTiles({ docs, selectedIds, previewId, downloadDocument, meta
             key={d.id}
             data-document-id={d.id}
             className={`home-tile${selected ? ' is-selected' : ''}`}
-            role="button"
-            tabIndex={0}
-            onClick={(event) => onClick(event, d)}
-            onDoubleClick={(event) => onDoubleClick(event, d)}
             onContextMenu={(event) => onContextMenu(event, d)}
-            onKeyDown={(event) => { if (event.key === 'Enter') onDoubleClick(event, d); }}
           >
-            <div className="home-tile__thumb">
-              <PdfPageThumb doc={d.raw} downloadDocument={downloadDocument} variant="preview" fill fallback={<PdfThumb height="100%" stamp="" />} />
-            </div>
-            <div className="home-tile__foot">
-              <div className="home-tile__text">
-                <div className="home-tile__name">{d.name}</div>
-                <div className="home-tile__meta">{metaFor(d)}</div>
-                {onTags && tags.length ? (
-                  <div className="home-tile__tags">{tags.slice(0, 3).map((tag) => <span key={tag} className="home-tag-chip">{tag}</span>)}</div>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                aria-haspopup="menu"
-                className="hub-icon-btn"
-                aria-label="More"
-                {...tip('More')}
-                onClick={(event) => onMore(event, d)}
-                onDoubleClick={(event) => event.stopPropagation()}
-              ><Icon name="more" size={14} /></button>
-            </div>
+            <button
+              type="button"
+              className="home-tile__trigger"
+              data-keyboard-control=""
+              aria-label={d.name}
+              aria-pressed={selected}
+              onClick={(event) => onClick(event, d)}
+              onDoubleClick={(event) => onDoubleClick(event, d)}
+              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); onDoubleClick(event, d); } }}
+            >
+              <span className="home-tile__thumb">
+                <PdfPageThumb doc={d.raw} downloadDocument={downloadDocument} variant="preview" fill fallback={<PdfThumb height="100%" stamp="" />} />
+              </span>
+              <span className="home-tile__foot">
+                <span className="home-tile__text">
+                  <span className="home-tile__name">{d.name}</span>
+                  <span className="home-tile__meta">{metaFor(d)}</span>
+                  {onTags && tags.length ? (
+                    <span className="home-tile__tags">{tags.slice(0, 3).map((tag) => <span key={tag} className="home-tag-chip">{tag}</span>)}</span>
+                  ) : null}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              className="hub-icon-btn home-tile__more"
+              aria-label="More"
+              {...tip('More')}
+              onClick={(event) => onMore(event, d)}
+              onDoubleClick={(event) => event.stopPropagation()}
+            ><Icon name="more" size={14} /></button>
           </div>
         );
       })}

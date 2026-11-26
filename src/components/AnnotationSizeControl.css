@@ -64,7 +64,7 @@
 }
 
 @media (hover: hover) {
-  .annotation-size-control__trigger:hover {
+  .annotation-size-control__trigger:not(:disabled):hover:not(:active) {
     color: var(--text-2);
     background: var(--hover);
   }
@@ -195,7 +195,7 @@
 .annotation-size-control input:disabled,
 .annotation-size-control__trigger:disabled {
   color: var(--text-disabled);
-  cursor: default;
+  cursor: not-allowed;
 }
 
 /* 2026-10-22 (owner: the old 12-row list "looks like shit"; keep the dropdown

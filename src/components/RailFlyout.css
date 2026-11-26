@@ -197,7 +197,7 @@
   cursor: default;
 }
 
-.rail-flyout__step:active {
+.rail-flyout__step:not(:disabled):not([aria-disabled='true']):active {
   background: var(--pressed);
   transition-duration: 0s;
 }

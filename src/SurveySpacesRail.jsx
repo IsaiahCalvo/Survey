@@ -2604,7 +2604,7 @@ const SurveySpacesRail = ({
                             className="mobile-survey-template-button"
                             aria-label={`Template: ${selectedTemplate.name || 'Survey'}. Switch template`}
                             aria-expanded={isMobileTemplateSwitching}
-                            aria-controls="survey-template-list"
+                            aria-controls={isMobileTemplateSwitching ? 'survey-template-list' : undefined}
                             onClick={() => {
                               // The category rows turn into the template rows
                               // and back (captureRailMorph).
