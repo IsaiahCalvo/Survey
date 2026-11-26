@@ -158,7 +158,7 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.equal(highlightControl.className, 'text-selection-action-bar__mark');
     assert.equal(highlightControl.getAttribute('data-focused'), 'true');
     assert.ok(document.querySelector('button[aria-label="Set Highlight color"]').classList.contains('text-selection-action-bar__button'));
-    for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
+    for (const [label, iconName] of [['Remove Highlight', 'textHighlightTool'], ['Apply Underline', 'textUnderlineTool'], ['Apply Squiggle', 'textSquiggleTool'], ['Remove Strike Through', 'textStrikeTool'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'textRedactTool']]) {
       assert.equal(document.querySelector(`button[aria-label="${label}"] [data-icon-name]`)?.getAttribute('data-icon-name'), iconName);
     }
     const highlightSwatch = document.querySelector('button[aria-label="Set Highlight color"] span');

@@ -71,7 +71,7 @@ import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import { polySplineStep, smoothPolylinePoints, splinePathD } from './polySpline.js';
-import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
+import { getTextMarkupUnderlineInset, padTextHighlightQuad } from './pdfTextMarkup.js';
 import { calloutWrapsWords, textWrapsWords, wrapTextCss } from './textWrapMode.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
@@ -762,47 +762,19 @@ const renderRectBase = (obj, index) => {
   );
 };
 
-export const renderTextMarkup = (obj, index) => {
+/**
+ * Path data for a stroked text markup (underline, strikeout, squiggly, link).
+ * renderTextMarkup paints it and SVGAnnotationLayer's hover glow traces it, so
+ * the glow follows the real line or wave. textMarkupRenderSpec twins these
+ * formulas for the canvas painter (drift guard in annotationFamilyCanvasPainter).
+ */
+export function textMarkupLinePathD(obj) {
   const data = obj?.data || {};
   const type = String(data.markupType || obj?.exportType || '').toLowerCase();
   const quads = Array.isArray(data.quads) ? data.quads : [];
-  if (data.type !== 'text-markup' || quads.length === 0) return null;
-  const color = (obj.fill && obj.fill !== 'transparent' ? obj.fill : null)
-    || (obj.stroke && obj.stroke !== 'transparent' ? obj.stroke : null)
-    || '#f4d35e';
-  const opacity = Math.max(0, Math.min(1, Number(obj.opacity ?? 0.3)));
-  const key = `text-markup-${obj.id || data.id || index}`;
-  const shapeId = obj.id || data.id || key;
-  // UX: authored weights must survive import, including strokes below our default.
+  if (data.type !== 'text-markup' || quads.length === 0) return '';
   const lineWidth = Number.isFinite(data.lineWidth) ? Math.max(0, data.lineWidth) : 1.2;
-
-  const isUnappliedImportedRedaction = type === 'redact'
-    && obj?.isPdfImported
-    && data.applied !== true;
-  if (type === 'highlight' || type === 'redact') {
-    const d = quads.map((q) => (
-      `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`
-    )).join(' ');
-    return (
-      <path
-        key={key}
-        d={d}
-        fill={isUnappliedImportedRedaction ? 'none' : type === 'redact' ? '#000000' : color}
-        stroke={isUnappliedImportedRedaction ? UNAPPLIED_REDACTION_WARNING_COLOR : undefined}
-        strokeWidth={isUnappliedImportedRedaction ? lineWidth : undefined}
-        fillRule="nonzero"
-        opacity={type === 'redact' ? 1 : opacity}
-        style={data.overlapMode === 'layered' ? { mixBlendMode: 'multiply' } : undefined}
-        data-shape-id={shapeId}
-        data-shape-kind={`text-markup-${type}`}
-        data-overlap-mode={data.overlapMode || 'layered'}
-      />
-    );
-  }
-
-  if (type === 'link' && obj?.isPdfImported) return null;
-
-  const paths = quads.map((q) => {
+  return quads.map((q) => {
     const height = Math.max(1, Math.hypot(q.x3 - q.x1, q.y3 - q.y1));
     // PDF underline imports paint a thin rect whose center sits just inside
     // the text quad. Match that baseline instead of putting our stroke center
@@ -830,6 +802,53 @@ export const renderTextMarkup = (obj, index) => {
     }
     return d;
   }).join(' ');
+}
+
+export const renderTextMarkup = (obj, index) => {
+  const data = obj?.data || {};
+  const type = String(data.markupType || obj?.exportType || '').toLowerCase();
+  const quads = Array.isArray(data.quads) ? data.quads : [];
+  if (data.type !== 'text-markup' || quads.length === 0) return null;
+  const color = (obj.fill && obj.fill !== 'transparent' ? obj.fill : null)
+    || (obj.stroke && obj.stroke !== 'transparent' ? obj.stroke : null)
+    || '#f4d35e';
+  const opacity = Math.max(0, Math.min(1, Number(obj.opacity ?? 0.3)));
+  const key = `text-markup-${obj.id || data.id || index}`;
+  const shapeId = obj.id || data.id || key;
+  // UX: authored weights must survive import, including strokes below our default.
+  const lineWidth = Number.isFinite(data.lineWidth) ? Math.max(0, data.lineWidth) : 1.2;
+
+  const isUnappliedImportedRedaction = type === 'redact'
+    && obj?.isPdfImported
+    && data.applied !== true;
+  if (type === 'highlight' || type === 'redact') {
+    // A highlight made here reaches a little past its first and last letters
+    // (owner 2026-11-25); imported ones keep the quads their app wrote.
+    const padHighlight = type === 'highlight' && !obj?.isPdfImported;
+    const d = quads.map((raw) => {
+      const q = padHighlight ? padTextHighlightQuad(raw) : raw;
+      return `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`;
+    }).join(' ');
+    return (
+      <path
+        key={key}
+        d={d}
+        fill={isUnappliedImportedRedaction ? 'none' : type === 'redact' ? '#000000' : color}
+        stroke={isUnappliedImportedRedaction ? UNAPPLIED_REDACTION_WARNING_COLOR : undefined}
+        strokeWidth={isUnappliedImportedRedaction ? lineWidth : undefined}
+        fillRule="nonzero"
+        opacity={type === 'redact' ? 1 : opacity}
+        style={data.overlapMode === 'layered' ? { mixBlendMode: 'multiply' } : undefined}
+        data-shape-id={shapeId}
+        data-shape-kind={`text-markup-${type}`}
+        data-overlap-mode={data.overlapMode || 'layered'}
+      />
+    );
+  }
+
+  if (type === 'link' && obj?.isPdfImported) return null;
+
+  const paths = textMarkupLinePathD(obj);
   return (
     <path
       key={key}

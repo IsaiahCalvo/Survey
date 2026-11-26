@@ -92,9 +92,10 @@ test('text markup selection chrome exposes only left and right range handles', (
   );
 });
 
-test('text action bar uses the locked SVG assets for every text markup action', () => {
+test('text action bar uses the Text row tool glyphs for every text markup action', () => {
   assert.match(textActionBarSource, /import Icon from '\.\.\/Icons'/);
-  for (const iconName of ['formatHighlight', 'formatUnderline', 'formatSquiggle', 'formatStrikethrough', 'formatHyperlink', 'formatRedact']) {
+  // Owner 2026-11-25: one icon per mark, the same in the Text row and here.
+  for (const iconName of ['textHighlightTool', 'textUnderlineTool', 'textSquiggleTool', 'textStrikeTool', 'formatHyperlink', 'textRedactTool']) {
     assert.match(textActionBarSource, new RegExp(iconName));
   }
   assert.doesNotMatch(textActionBarSource, /text-markup-[a-z-]+\.svg/);

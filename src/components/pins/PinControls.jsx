@@ -53,7 +53,10 @@ export function PinToolButton({ active, onArm, glyphSize = 18 }) {
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
   useOutsideClose(open, setOpen, [buttonRef, menuRef]);
-  const label = kind === 'issue' ? 'Add an issue on the page' : `Add a ${PIN_KIND_LABELS[kind].toLowerCase()} on the page`;
+  // Owner 2026-11-25: one name per thing. The Insert row and the phone call
+  // this tool "Page comment", so its button says the same; it was "Add a
+  // comment on the page", which read like the Comments panel's own add.
+  const label = `Page ${PIN_KIND_LABELS[kind].toLowerCase()}`;
   const rect = open ? buttonRef.current?.getBoundingClientRect() : null;
   return (
     <>
