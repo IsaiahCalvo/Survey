@@ -96,9 +96,27 @@ const isBlankTextLayerHit = (node, root) => Boolean(
   || (root && typeof node.contains === 'function' && node.contains(root))
 );
 
+const isSameBand = (rect, anchorRect, vertical) => {
+  if (!anchorRect) return false;
+  if (!vertical) {
+    const midY = (rect.top + rect.bottom) / 2;
+    const anchorMidY = (anchorRect.top + anchorRect.bottom) / 2;
+    return (
+      midY >= anchorRect.top - 2 && midY <= anchorRect.bottom + 2
+      && anchorMidY >= rect.top - 2 && anchorMidY <= rect.bottom + 2
+    );
+  }
+  const midX = (rect.left + rect.right) / 2;
+  const anchorMidX = (anchorRect.left + anchorRect.right) / 2;
+  return (
+    midX >= anchorRect.left - 2 && midX <= anchorRect.right + 2
+    && anchorMidX >= rect.left - 2 && anchorMidX <= rect.right + 2
+  );
+};
+
 // When a drag ends past a word onto blank paper (>32px from the glyph span),
 // resolve the outermost glyph crossed on that same line without jumping to
-// unrelated lines further down the page (#1668, #1669).
+// neighbouring lines above or below (#1668, #1669).
 const sameLineOvershootBoundary = (documentRef, root, anchorBoundary, startClientPoint, endClientPoint) => {
   const endX = Number(endClientPoint?.x);
   const endY = Number(endClientPoint?.y);
@@ -114,33 +132,60 @@ const sameLineOvershootBoundary = (documentRef, root, anchorBoundary, startClien
   const startY = Number.isFinite(Number(startClientPoint?.y))
     ? Number(startClientPoint.y)
     : (anchorRect ? (anchorRect.top + anchorRect.bottom) / 2 : endY);
+  const anchorPad = anchorRect
+    ? Math.min(3, Math.max(1, (vertical ? anchorRect.width : anchorRect.height) * 0.2))
+    : 0;
+  const endNearAnchorBand = Boolean(
+    anchorRect && (!vertical
+      ? (endY >= anchorRect.top - anchorPad && endY <= anchorRect.bottom + anchorPad)
+      : (endX >= anchorRect.left - anchorPad && endX <= anchorRect.right + anchorPad))
+  );
 
   let chosen = null;
+  let chosenOnAnchorLine = false;
+  const isBetter = (onAnchorLine, isFurther) => {
+    if (!chosen) return true;
+    if (onAnchorLine !== chosenOnAnchorLine) return onAnchorLine;
+    return isFurther;
+  };
   for (const entry of spanTextEntries(root)) {
     const { rect } = entry;
+    const onAnchorLine = isSameBand(rect, anchorRect, vertical);
     if (!vertical) {
-      const padY = Math.max(12, rect.height * 0.75);
-      if (endY < rect.top - padY || endY > rect.bottom + padY) continue;
+      const containsEnd = endY >= rect.top && endY <= rect.bottom;
+      if (!containsEnd && !(onAnchorLine && endNearAnchorBand)) continue;
       if (endX > startX) {
         const minX = Math.min(startX, anchorRect ? anchorRect.left : startX) - 8;
         if (rect.left > endX || rect.right < minX) continue;
-        if (!chosen || rect.right > chosen.rect.right) chosen = entry;
+        if (isBetter(onAnchorLine, !chosen || rect.right > chosen.rect.right)) {
+          chosen = entry;
+          chosenOnAnchorLine = onAnchorLine;
+        }
       } else if (endX < startX) {
         const maxX = Math.max(startX, anchorRect ? anchorRect.right : startX) + 8;
         if (rect.right < endX || rect.left > maxX) continue;
-        if (!chosen || rect.left < chosen.rect.left) chosen = entry;
+        if (isBetter(onAnchorLine, !chosen || rect.left < chosen.rect.left)) {
+          chosen = entry;
+          chosenOnAnchorLine = onAnchorLine;
+        }
       }
     } else {
-      const padX = Math.max(12, rect.width * 0.75);
-      if (endX < rect.left - padX || endX > rect.right + padX) continue;
+      const containsEnd = endX >= rect.left && endX <= rect.right;
+      if (!containsEnd && !(onAnchorLine && endNearAnchorBand)) continue;
       if (endY > startY) {
         const minY = Math.min(startY, anchorRect ? anchorRect.top : startY) - 8;
         if (rect.top > endY || rect.bottom < minY) continue;
-        if (!chosen || rect.bottom > chosen.rect.bottom) chosen = entry;
+        if (isBetter(onAnchorLine, !chosen || rect.bottom > chosen.rect.bottom)) {
+          chosen = entry;
+          chosenOnAnchorLine = onAnchorLine;
+        }
       } else if (endY < startY) {
         const maxY = Math.max(startY, anchorRect ? anchorRect.bottom : startY) + 8;
         if (rect.bottom < endY || rect.top > maxY) continue;
-        if (!chosen || rect.top < chosen.rect.top) chosen = entry;
+        if (isBetter(onAnchorLine, !chosen || rect.top < chosen.rect.top)) {
+          chosen = entry;
+          chosenOnAnchorLine = onAnchorLine;
+        }
       }
     }
   }
@@ -289,18 +334,21 @@ export function repairCollapsedTextDragSelection({
     return false;
   }
 
-  let endBoundary = getCaretBoundaryFromClientPoint(documentRef, endX, endY, textLayer);
-  if (!endBoundary && Number.isFinite(endX) && Number.isFinite(endY)) {
-    const rawCaret = rawCaretFromPoint(documentRef, endX, endY);
-    if (isBlankTextLayerHit(rawCaret.node, textLayer)) {
-      endBoundary = sameLineOvershootBoundary(
-        documentRef,
-        textLayer,
-        fixedBoundary || startBoundary,
-        startClientPoint,
-        endClientPoint,
-      );
-    }
+  const rawEndCaret = Number.isFinite(endX) && Number.isFinite(endY)
+    ? rawCaretFromPoint(documentRef, endX, endY)
+    : { node: null, offset: 0 };
+  let endBoundary = null;
+  if (Number.isFinite(endX) && Number.isFinite(endY) && isBlankTextLayerHit(rawEndCaret.node, textLayer)) {
+    endBoundary = sameLineOvershootBoundary(
+      documentRef,
+      textLayer,
+      fixedBoundary || startBoundary,
+      startClientPoint,
+      endClientPoint,
+    );
+  }
+  if (!endBoundary) {
+    endBoundary = getCaretBoundaryFromClientPoint(documentRef, endX, endY, textLayer);
   }
   if (!endBoundary) return false;
   try {

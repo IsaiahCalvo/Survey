@@ -386,4 +386,67 @@ test('#1669: narrow upright glyph in a horizontal span starts at offset 0 when d
   });
 });
 
+test('#1668/#1669: drag overshooting a short word does not jump onto a longer neighbouring line 2px away', () => {
+  const dom = new JSDOM(`<!doctype html>
+    <div class="pdfjsTextLayer is-interactive">
+      <span>Above longer neighbour line</span>
+      <span>Ground</span>
+      <span>Kitchen counter top line</span>
+    </div>`, { pretendToBeVisual: true });
+  const { document } = dom.window;
+  const layer = document.querySelector('.pdfjsTextLayer');
+  const [aboveSpan, groundSpan, belowSpan] = Array.from(layer.querySelectorAll('span'));
+  const aboveText = aboveSpan.firstChild;
+  const groundText = groundSpan.firstChild;
+  const belowText = belowSpan.firstChild;
+  aboveSpan.getBoundingClientRect = () => ({ left: 100, right: 370, top: 24, bottom: 38, width: 270, height: 14 });
+  groundSpan.getBoundingClientRect = () => ({ left: 100, right: 160, top: 40, bottom: 54, width: 60, height: 14 });
+  belowSpan.getBoundingClientRect = () => ({ left: 100, right: 340, top: 56, bottom: 70, width: 240, height: 14 });
+  const nativeCreateRange = document.createRange.bind(document);
+  document.createRange = () => {
+    const range = nativeCreateRange();
+    range.getBoundingClientRect = () => {
+      const node = range.startContainer;
+      const top = node === aboveText ? 24 : (node === belowText ? 56 : 40);
+      const left = 100 + range.startOffset * 10;
+      const right = 100 + range.endOffset * 10;
+      return { left, right, top, bottom: top + 14, width: right - left, height: 14 };
+    };
+    return range;
+  };
+  document.caretPositionFromPoint = () => ({ offsetNode: layer, offset: 0 });
+
+  const selection = dom.window.getSelection();
+  selection.removeAllRanges();
+
+  const repaired = repairCollapsedTextDragSelection({
+    documentRef: document,
+    windowRef: dom.window,
+    startBoundary: { node: groundText, offset: 0 },
+    startClientPoint: { x: 92, y: 47 },
+    endClientPoint: { x: 240, y: 47 },
+  });
+
+  assert.equal(repaired, true);
+  assert.equal(selection.toString(), 'Ground');
+  assert.equal(selection.getRangeAt(0).startContainer, groundText);
+  assert.equal(selection.getRangeAt(0).startOffset, 0);
+  assert.equal(selection.getRangeAt(0).endContainer, groundText);
+  assert.equal(selection.getRangeAt(0).endOffset, 6);
+
+  // Even when the pointer drifts onto the 2px seam at the top of the neighbour
+  // line (y = 56), the anchor line still wins over the longer neighbour below.
+  selection.removeAllRanges();
+  const repairedAtSeam = repairCollapsedTextDragSelection({
+    documentRef: document,
+    windowRef: dom.window,
+    startBoundary: { node: groundText, offset: 0 },
+    startClientPoint: { x: 92, y: 47 },
+    endClientPoint: { x: 240, y: 56 },
+  });
+  assert.equal(repairedAtSeam, true);
+  assert.equal(selection.toString(), 'Ground');
+});
+
+
 
