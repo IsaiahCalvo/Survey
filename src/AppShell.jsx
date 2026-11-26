@@ -6120,8 +6120,8 @@ export default function App({ devPreviewReturnTab = null }) {
               // in the View row (Nightly 'view-strip') they point up, clear of
               // the row's other buttons.
               // labelled (the View drawer, owner 2026-11-26: the row of bare
-              // icons "throws me off"): each button shows its name beside its
-              // glyph, as a toggle chip in a tidy grid.
+              // icons "throws me off"): each button shows its name under its
+              // glyph, one even row of view settings only.
               const viewLook = (labelled, on) => (labelled
                 ? { className: 'view-drawer__toggle', 'data-on': on ? 'true' : undefined }
                 : { style: { ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' } });
@@ -6203,8 +6203,11 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                     ))} />
                     {/* Owner 2026-10-22: snapping's switch, beside the grid
-                        (Bluebeam keeps SNAP and GRID side by side too). */}
-                    {snapContentEnabled ? (
+                        (Bluebeam keeps SNAP and GRID side by side too). The
+                        View drawer (labelled) leaves it out, owner 2026-11-26
+                        ("a lot of this seems extra"): snapping is a drawing
+                        setting, kept in Settings > Annotations and Shift+S. */}
+                    {labelled ? null : snapContentEnabled ? (
                       // Nightly (flag 'snap-content'): the magnet opens the
                       // Snapping card - Marks and Drawing switches.
                       <SnappingMenu renderButton={({ open, ref, onClick, on }) => (
@@ -6269,8 +6272,10 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                     )}
                     {/* Nightly 'comment-pins': the "On the page" card (comments,
-                        issues and tasks dropped on the page). */}
-                    {pinsOn && (
+                        issues and tasks dropped on the page). The View drawer
+                        leaves it out: the Page comment tool's own menu holds
+                        the same switches (PinControls.jsx). */}
+                    {pinsOn && !labelled && (
                       <PinFilterMenu renderButton={({ open, ref, onClick, on }) => (
                         <button
                           ref={ref}
@@ -6294,7 +6299,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // View drawer the rail's Page fit button slides out
               // (ViewStripMenu.jsx): even rows of choices (Fit, Pages,
               // Columns, Scroll) spread down the drawer, then the view
-              // buttons as named switches on its foot.
+              // settings in one even row on its foot.
               const viewCardBody = () => {
                 const gridOn = isGridMode(pageSpread);
                 const columns = gridOn ? pageSpread.slice(5) : null;
@@ -6407,8 +6412,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       </>
                     )}
                     </div>
-                    {/* The view buttons as named switches in an even grid
-                        (owner 2026-11-26: the row of bare icons threw him). */}
+                    {/* The view settings, each named, in one even row (owner
+                        2026-11-26: the row of bare icons threw him, and
+                        Snapping and On the page were extra here). */}
                     <div role="toolbar" aria-label="View options" className="view-drawer__toggles">
                       {viewButtons('above', true)}
                     </div>

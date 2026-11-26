@@ -36,6 +36,8 @@ import { downloadMyData } from '../services/accountExport';
 import {
   readAnnotationSnapping,
   writeAnnotationSnapping,
+  readSnapContent,
+  writeSnapContent,
   readSnapAngle,
   writeSnapAngle,
   SNAP_ANGLE_CHOICES,
@@ -94,6 +96,12 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   // open and kept in step with other windows; an open document reads it at
   // the next text edit, so a change applies without a reload.
   const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
+  // Nightly 'snap-content': snap to the PDF's own lines. With 'view-strip'
+  // the View drawer has no magnet (owner 2026-11-26), so both switches live
+  // here, beside Shift+S.
+  const [snapContentOn] = useState(() => isFeatureOn('snap-content'));
+  const [viewStripOn] = useState(() => isFeatureOn('view-strip'));
+  const [snapContent, setSnapContent] = useState(() => readSnapContent());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
   const [snapAngle, setSnapAngle] = useState(() => readSnapAngle());
   const [defaultUnitsOn] = useState(() => isFeatureOn('default-units'));
@@ -128,7 +136,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   };
   useEffect(() => {
     if (!isOpen) return undefined;
-    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapAngle(readSnapAngle()); setUnits(readUnits()); };
+    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapContent(readSnapContent()); setSnapAngle(readSnapAngle()); setUnits(readUnits()); };
     refresh();
     return subscribeAnnotationPreferences(refresh);
   }, [isOpen]);
@@ -1309,12 +1317,25 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                 <div className="account-pref-row">
                   <div className="account-pref-copy">
                     <div className="account-pref-title" id="account-pref-annotation-snapping">Snapping</div>
-                    <p className="account-pref-description">Lines up marks with nearby annotations, pulls line ends onto other ends, and stops turns at right angles. The magnet button beside the page controls, or Shift+S, also turns it on and off. Hold Alt while dragging to skip it once.</p>
+                    <p className="account-pref-description">{viewStripOn
+                      ? 'Lines up marks with nearby annotations, pulls line ends onto other ends, and stops turns at right angles. Shift+S also turns it on and off. Hold Alt while dragging to skip it once.'
+                      : 'Lines up marks with nearby annotations, pulls line ends onto other ends, and stops turns at right angles. The magnet button beside the page controls, or Shift+S, also turns it on and off. Hold Alt while dragging to skip it once.'}</p>
                   </div>
                   <button type="button" className="account-switch" role="switch" aria-checked={annotationSnapping} aria-labelledby="account-pref-annotation-snapping" data-pref="annotation-snapping" onClick={() => setAnnotationSnapping(writeAnnotationSnapping(!annotationSnapping))}>
                     <span className="account-switch-track" aria-hidden="true" />
                   </button>
                 </div>
+                {snapContentOn && (
+                  <div className="account-pref-row">
+                    <div className="account-pref-copy">
+                      <div className="account-pref-title" id="account-pref-snap-content">Snap to the drawing</div>
+                      <p className="account-pref-description">Pulls marks onto the lines and corners in the PDF itself.</p>
+                    </div>
+                    <button type="button" className="account-switch" role="switch" aria-checked={snapContent} aria-labelledby="account-pref-snap-content" data-pref="snap-content" onClick={() => setSnapContent(writeSnapContent(!snapContent))}>
+                      <span className="account-switch-track" aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
                 <div className="account-pref-row">
                   <div className="account-pref-copy">
                     <div className="account-pref-title" id="account-pref-snap-angle">Shift snap angle</div>
