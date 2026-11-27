@@ -160,8 +160,9 @@ test.describe('phone Survey export', () => {
     }).toPass({ timeout: 45_000 });
     const download = page.waitForEvent('download');
     await exportData.tap();
-    expect((await download).suggestedFilename()).toBe('E2E_Doors_export.xlsx');
-    await expect(page.getByText('Downloaded E2E_Doors_export.xlsx')).toBeVisible();
+    // The file is named for the project or drawing, not the template (surveyExportBaseName).
+    expect((await download).suggestedFilename()).toBe('E2E_Survey_Agent_Drawing_export.xlsx');
+    await expect(page.getByText('Downloaded E2E_Survey_Agent_Drawing_export.xlsx')).toBeVisible();
   });
 });
 

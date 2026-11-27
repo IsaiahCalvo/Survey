@@ -159,7 +159,7 @@ test('project library: save with a token, place by click, a teammate sees it liv
   const at = await pagePoint(owner.page);
   const before = new Set(await markIds(owner.page));
   await tile.first().click();
-  await expect(tile.first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(tile.first().locator('.mark-library__trigger')).toHaveAttribute('aria-pressed', 'true');
   await owner.page.mouse.move(at(0.6, 0.35).x, at(0.6, 0.35).y, { steps: 4 });
   await expect(owner.page.locator('[data-mark-library-ghost]')).toBeVisible();
   await owner.page.mouse.click(at(0.6, 0.35).x, at(0.6, 0.35).y);
@@ -169,7 +169,7 @@ test('project library: save with a token, place by click, a teammate sees it liv
   expect(Math.abs(placed.x + placed.width / 2 - at(0.6, 0.35).x)).toBeLessThan(12);
   expect(Math.abs(placed.y + placed.height / 2 - at(0.6, 0.35).y)).toBeLessThan(12);
   // One placement, then the item lets go.
-  await expect(tile.first()).toHaveAttribute('aria-pressed', 'false');
+  await expect(tile.first().locator('.mark-library__trigger')).toHaveAttribute('aria-pressed', 'false');
   // One Undo takes the whole placement away.
   await owner.page.keyboard.press('Control+z');
   await expect.poll(async () => (await markIds(owner.page)).filter((id) => !before.has(id)).length).toBe(0);
