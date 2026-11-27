@@ -327,6 +327,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-work-area .pdf-engine-host {
   bottom: var(--mobile-dock-bar-height) !important;
 }
+/* #1790: keep the phone PDF area clear above the floating pinned-tools pill
+   and document chip so neither overlaps the bottom of the drawing. */
+[data-sheet-set-host]:has(.pinned-dock-shell.is-phone) .mobile-pdf-work-area .pdf-engine-host,
+[data-sheet-set-host]:has(.sheet-set-bar.is-phone) .mobile-pdf-work-area .pdf-engine-host {
+  bottom: calc(var(--mobile-dock-bar-height) + 60px) !important;
+}
+[data-sheet-set-host]:has(.pinned-dock-shell.is-phone):has(.sheet-set-bar.is-phone) .mobile-pdf-work-area .pdf-engine-host {
+  bottom: calc(var(--mobile-dock-bar-height) + 120px) !important;
+}
 
 .mobile-pdf-header button,
 .mobile-pdf-tools button,

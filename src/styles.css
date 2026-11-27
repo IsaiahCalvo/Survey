@@ -4235,3 +4235,17 @@ html[data-backdrop-blur="off"] *::after {
   outline: 2px solid var(--accent-text);
   outline-offset: -3px;
 }
+
+/* #1789: keep comment pins compact visually (26px) while giving phone / touch
+   users a full 44x44px tap area. */
+@media (max-width: 767px), (pointer: coarse) {
+  [data-page-pin-anchor]:not([data-pin-pass-through="true"])::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
