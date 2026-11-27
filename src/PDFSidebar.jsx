@@ -16,14 +16,15 @@ import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinn
 import { ToolbarsGlyph, ToolbarsMenu } from './components/ToolbarsMenu.jsx';
 import { applyLayerFocusCss, layerFocusCss, useLayerFocus } from './utils/layerFocus.js';
 import PagesPanel from './sidebar/PagesPanel';
+import { safeLazyPanel, SidebarPanelErrorBoundary } from './sidebar/lazyPanel.jsx';
 // Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
-// stays out of the first-paint bundle; it loads when the viewer's rail mounts.
-const SearchTextPanel = lazy(() => import('./sidebar/SearchTextPanel'));
+// stays out of the first-paint bundle; it loads only when Search is opened (#1819).
+const SearchTextPanel = safeLazyPanel(() => import('./sidebar/SearchTextPanel'), 'Search');
 import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import LayersPanel from './sidebar/LayersPanel';
 // Beta 'mark-library' (Survey Nightly): loads only when the flag is on.
-const MarkLibraryPanel = lazy(() => import('./markLibrary/MarkLibraryPanel'));
+const MarkLibraryPanel = safeLazyPanel(() => import('./markLibrary/MarkLibraryPanel'), 'Mark library');
 import CommentsPanel from './sidebar/CommentsPanel';
 import MarkupsPanel from './sidebar/MarkupsPanel';
 import { OPEN_MARK_COMMENTS_EVENT, takePendingMarkCommentsFocus } from './services/markCommentsFocus.js';
@@ -325,6 +326,12 @@ const PDFSidebar = React.forwardRef(({
   }
   const [isCollapsed, setIsCollapsed] = useState(() => !initialLayoutRef.current.open);
   const [activeTab, setActiveTab] = useState(() => initialLayoutRef.current.panel); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
+  const [searchPanelMounted, setSearchPanelMounted] = useState(() => initialLayoutRef.current.panel === 'search');
+  React.useEffect(() => {
+    if (activeTab === 'search' && !searchPanelMounted) {
+      setSearchPanelMounted(true);
+    }
+  }, [activeTab, searchPanelMounted]);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
   // Speed: read the document's text for search in idle time a moment after it
   // opens, so a search finds it ready (front tab only; shared per document).
@@ -1211,29 +1218,34 @@ const PDFSidebar = React.forwardRef(({
               />
             </div>
 
-            {/* Search Panel */}
-            <div style={{ display: activeTab === 'search' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-              <Suspense fallback={null}>
-              <SearchTextPanel
-                pdfDoc={pdfDoc}
-                pdfDocumentKey={pdfDocumentKey}
-                numPages={numPages}
-                onNavigateToPage={onNavigateToPage}
-                onNavigateToMatch={onNavigateToMatch}
-                onFindTextMatches={onFindTextMatches}
-                onClearTextSearch={onClearTextSearch}
-                searchResults={searchResults}
-                currentMatchIndex={currentMatchIndex}
-                onSearchResultsChange={onSearchResultsChange}
-                onCurrentMatchIndexChange={onCurrentMatchIndexChange}
-                isActive={activeTab === 'search'}
-                focusRequestToken={searchFocusRequestToken}
-                selectOnFocus={searchSelectOnFocus}
-                mobileMode={mobileMode}
-                onRequestSheetClose={mobileMode ? requestSheetClose : undefined}
-              />
-              </Suspense>
-            </div>
+            {/* Search Panel — deferred until Search is opened (#1819) so opening
+                Pages/Layers never eagerly loads the Search chunk. */}
+            {(searchPanelMounted || activeTab === 'search') && (
+              <div style={{ display: activeTab === 'search' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <SidebarPanelErrorBoundary label="Search">
+                  <Suspense fallback={null}>
+                    <SearchTextPanel
+                      pdfDoc={pdfDoc}
+                      pdfDocumentKey={pdfDocumentKey}
+                      numPages={numPages}
+                      onNavigateToPage={onNavigateToPage}
+                      onNavigateToMatch={onNavigateToMatch}
+                      onFindTextMatches={onFindTextMatches}
+                      onClearTextSearch={onClearTextSearch}
+                      searchResults={searchResults}
+                      currentMatchIndex={currentMatchIndex}
+                      onSearchResultsChange={onSearchResultsChange}
+                      onCurrentMatchIndexChange={onCurrentMatchIndexChange}
+                      isActive={activeTab === 'search'}
+                      focusRequestToken={searchFocusRequestToken}
+                      selectOnFocus={searchSelectOnFocus}
+                      mobileMode={mobileMode}
+                      onRequestSheetClose={mobileMode ? requestSheetClose : undefined}
+                    />
+                  </Suspense>
+                </SidebarPanelErrorBoundary>
+              </div>
+            )}
 
             {layersEnabled && (
               <div style={{ display: activeTab === 'layers' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -1250,9 +1262,11 @@ const PDFSidebar = React.forwardRef(({
 
             {markLibraryEnabled && activeTab === 'library' && (
               <div style={{ display: 'flex', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-                <Suspense fallback={null}>
-                  <MarkLibraryPanel phone={mobileMode} headActionsHost={mobileMode ? null : libraryHeadHost} onPlaced={mobileMode ? () => closePanelSmoothly() : undefined} />
-                </Suspense>
+                <SidebarPanelErrorBoundary label="Mark library">
+                  <Suspense fallback={null}>
+                    <MarkLibraryPanel phone={mobileMode} headActionsHost={mobileMode ? null : libraryHeadHost} onPlaced={mobileMode ? () => closePanelSmoothly() : undefined} />
+                  </Suspense>
+                </SidebarPanelErrorBoundary>
               </div>
             )}
 
