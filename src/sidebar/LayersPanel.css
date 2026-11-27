@@ -74,7 +74,23 @@
   color: var(--text-1);
 }
 
-.layers-row:focus-visible {
+.layers-row__select {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.layers-row__select:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
 }

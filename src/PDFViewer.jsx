@@ -22545,6 +22545,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // device-files (Nightly): a PDF opened with no account keeps its marks in
   // the store's device copy under one device actor.
   const annotationActorId = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : (user?.id || null);
+  const previewLayersHandlerRef = useRef(null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22611,6 +22612,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // w33: no one-time store compaction write while the document is locked.
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
+    onPreviewLayers: (value) => previewLayersHandlerRef.current?.(value),
   });
   const offlineCopyToastRef = useRef(null);
   useEffect(() => {
@@ -23050,6 +23052,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [surveyModeToolsOn] = useState(() => isFeatureOn('survey-mode-tools'));
   const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
   const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
+  const prevLayerDocIdRef = useRef(pdfFile?.id);
+  previewLayersHandlerRef.current = (value) => {
+    if (layersEnabled) setLayerState(normalizeLayerState(value));
+  };
+  useEffect(() => {
+    if (prevLayerDocIdRef.current === pdfFile?.id) return;
+    prevLayerDocIdRef.current = pdfFile?.id;
+    setLayerState(DEFAULT_LAYER_STATE);
+    setActiveLayerId(DEFAULT_LAYER_ID);
+  }, [pdfFile?.id]);
   useEffect(() => {
     if (!layersEnabled || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     const apply = (value) => setLayerState(normalizeLayerState(value));

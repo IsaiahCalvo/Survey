@@ -857,8 +857,11 @@ export function useMobileSheetMotion(onClose, options = {}) {
       const y = touch.clientY;
       const prevY = g.lastY;
       const now = nowMs(event);
-      const dt = now - g.lastT;
-      if (dt > 0) g.vy = (0.7 * ((y - prevY) / dt)) + (0.3 * g.vy);
+      const rawDt = now - g.lastT;
+      if (rawDt > 0) {
+        const dt = Math.max(rawDt, 8);
+        g.vy = (0.7 * ((y - prevY) / dt)) + (0.3 * g.vy);
+      }
       g.lastY = y;
       g.lastT = now;
 
@@ -879,9 +882,9 @@ export function useMobileSheetMotion(onClose, options = {}) {
           g.mode = 'ignore';
           return;
         }
-        // The sheet takes the finger where it is now, so the edge does not
-        // jump by the slop distance.
-        engage(y);
+        // Anchor just past the slop threshold so a slow pull does not jump AND
+        // a fast or coarse first move keeps its full travel (#1768).
+        engage(g.y0 + (Math.sign(dy) * SHEET_SLOP_PX));
       }
 
       if (g.mode === 'watch') {
@@ -902,6 +905,76 @@ export function useMobileSheetMotion(onClose, options = {}) {
       const vy = nowMs(event) - g.lastT > SHEET_VELOCITY_STALE_MS ? 0 : g.vy;
       suppressNextClick(sheet.ownerDocument);
       liveRef.current.release(vy, event.type === 'touchcancel');
+    };
+
+    // Mouse / pen drags on the grab handle (desktop narrow viewport or pointer
+    // emulation without touch events): capture the pointer so dragging past the
+    // narrow 20px handle never drops the gesture (#1768). Touch pointers stay on
+    // the native touch listeners above so they are never double-handled.
+    let activePointerId = null;
+    const onPointerDown = (event) => {
+      if (event.pointerType === 'touch' || event.button !== 0) return;
+      const handle = event.target?.closest?.('.mobile-pdf-sheet__handle');
+      if (!handle || !sheet.contains(handle)) return;
+      const live = liveRef.current;
+      g.mode = null;
+      if (live.closing) return;
+      if (typeof live.canStartDrag === 'function' && !live.canStartDrag(event)) return;
+      activePointerId = event.pointerId;
+      g.mode = 'pending';
+      g.x0 = event.clientX;
+      g.y0 = event.clientY;
+      g.anchorY = event.clientY;
+      g.lastY = event.clientY;
+      g.lastT = nowMs(event);
+      g.vy = 0;
+      g.scrollers = [];
+      try { sheet.setPointerCapture?.(event.pointerId); } catch { /* synthetic events may lack capture */ }
+    };
+    const onPointerMove = (event) => {
+      if (activePointerId === null || event.pointerId !== activePointerId) return;
+      if (!g.mode || g.mode === 'ignore') return;
+      const live = liveRef.current;
+      const y = event.clientY;
+      const prevY = g.lastY;
+      const now = nowMs(event);
+      const rawDt = now - g.lastT;
+      if (rawDt > 0) {
+        const dt = Math.max(rawDt, 8);
+        g.vy = (0.7 * ((y - prevY) / dt)) + (0.3 * g.vy);
+      }
+      g.lastY = y;
+      g.lastT = now;
+
+      if (g.mode === 'pending') {
+        const dx = event.clientX - g.x0;
+        const dy = y - g.y0;
+        if (Math.abs(dx) < SHEET_SLOP_PX && Math.abs(dy) < SHEET_SLOP_PX) return;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          g.mode = 'ignore';
+          return;
+        }
+        if (dy < 0 && !(live.expandable && live.detent < live.maxDetent)) {
+          g.mode = 'ignore';
+          return;
+        }
+        engage(g.y0 + (Math.sign(dy) * SHEET_SLOP_PX));
+      }
+
+      if (event.cancelable) event.preventDefault();
+      engineRef.current?.dragBy(y - g.anchorY);
+    };
+    const onPointerEnd = (event) => {
+      if (activePointerId === null || event.pointerId !== activePointerId) return;
+      const pointerId = activePointerId;
+      activePointerId = null;
+      try { if (sheet.hasPointerCapture?.(pointerId)) sheet.releasePointerCapture?.(pointerId); } catch { /* ignore */ }
+      const mode = g.mode;
+      g.mode = null;
+      if (mode !== 'drag') return;
+      const vy = nowMs(event) - g.lastT > SHEET_VELOCITY_STALE_MS ? 0 : g.vy;
+      suppressNextClick(sheet.ownerDocument);
+      liveRef.current.release(vy, event.type === 'pointercancel');
     };
 
     // Owner 2026-09-30: start typing in a browse sheet and it rises to Full, so
@@ -1032,6 +1105,10 @@ export function useMobileSheetMotion(onClose, options = {}) {
     sheet.addEventListener('touchmove', onTouchMove, { passive: false });
     sheet.addEventListener('touchend', onTouchEnd);
     sheet.addEventListener('touchcancel', onTouchEnd);
+    sheet.addEventListener('pointerdown', onPointerDown);
+    sheet.addEventListener('pointermove', onPointerMove);
+    sheet.addEventListener('pointerup', onPointerEnd);
+    sheet.addEventListener('pointercancel', onPointerEnd);
     sheet.addEventListener('focusin', onFocusIn);
     sheet.addEventListener('focusout', onFocusOut);
     sheet.addEventListener(SHEET_REVEAL_EVENT, onReveal);
@@ -1044,7 +1121,12 @@ export function useMobileSheetMotion(onClose, options = {}) {
       sheet.removeEventListener('touchmove', onTouchMove, { passive: false });
       sheet.removeEventListener('touchend', onTouchEnd);
       sheet.removeEventListener('touchcancel', onTouchEnd);
+      sheet.removeEventListener('pointerdown', onPointerDown);
+      sheet.removeEventListener('pointermove', onPointerMove);
+      sheet.removeEventListener('pointerup', onPointerEnd);
+      sheet.removeEventListener('pointercancel', onPointerEnd);
       sheet.removeEventListener('focusin', onFocusIn);
+      activePointerId = null;
       g.mode = null;
     };
   }, [sheetEl]);

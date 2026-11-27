@@ -146,14 +146,7 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
             return (
               <div
                 key={layer.id}
-                role="radio"
-                aria-checked={active}
-                tabIndex={0}
-                data-layer-id={layer.id}
                 className={`layers-row${active ? ' is-active' : ''}${layer.visible ? '' : ' is-hidden'}${editing ? ' is-editing' : ''}`}
-                onClick={() => onActiveLayerChange?.(layer.id)}
-                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !editing) { e.preventDefault(); onActiveLayerChange?.(layer.id); } }}
-                onDoubleClick={() => startRename(layer)}
                 onContextMenu={(e) => {
                   const point = listMenuPointFrom(e);
                   if (point) setRowMenu({ ...point, layerId: layer.id });
@@ -172,6 +165,7 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
                 {editing ? (
                   <input
                     autoFocus
+                    data-layer-id={layer.id}
                     className="layers-row__input"
                     value={draftName}
                     aria-label="Layer name"
@@ -194,7 +188,17 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
                     }}
                   />
                 ) : (
-                  <span className="layers-row__name">{layer.name}</span>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    data-layer-id={layer.id}
+                    className="layers-row__select"
+                    onClick={(e) => { e.stopPropagation(); onActiveLayerChange?.(layer.id); }}
+                    onDoubleClick={(e) => { e.stopPropagation(); startRename(layer); }}
+                  >
+                    <span className="layers-row__name">{layer.name}</span>
+                  </button>
                 )}
                 {!readOnly && !editing && (
                   <span className="layers-row__tools">
