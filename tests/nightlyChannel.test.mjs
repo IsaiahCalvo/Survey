@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { nightlyTitle } from '../src/nightlyBrand.js';
-import { checkNightlyAccess } from '../src/nightlyGate.js';
+import { checkNightlyAccess, signOutFromNightlyGate } from '../src/nightlyGate.js';
 
 test('nightly: the tab says Survey Nightly', () => {
   assert.equal(nightlyTitle('Survey'), 'Survey Nightly');
@@ -22,4 +22,28 @@ test('nightly: only people the database lets in, and a failed check fails closed
   assert.equal(await checkNightlyAccess(rpc({ data: null, error: { message: 'no such function' } }), session), false);
   assert.equal(await checkNightlyAccess({ rpc: async () => { throw new Error('offline'); } }, session), false);
   assert.equal(await checkNightlyAccess(rpc({ data: false, error: null }), null), true, 'signed out: the sign-in screen shows');
+});
+
+test('nightly gate Sign out uses local scope and clears persisted auth tokens even on error', async () => {
+  const calls = [];
+  const store = new Map([
+    ['sb-project-auth-token', '{"access_token":"x"}'],
+    ['survey-theme', 'dark'],
+  ]);
+  const storage = {
+    get length() { return store.size; },
+    key(i) { return [...store.keys()][i] ?? null; },
+    removeItem(k) { store.delete(k); },
+  };
+  await signOutFromNightlyGate({
+    auth: {
+      async signOut(opts) {
+        calls.push(opts);
+        throw new Error('504 timeout');
+      },
+    },
+  }, storage);
+  assert.deepEqual(calls[0], { scope: 'local' });
+  assert.equal(store.has('sb-project-auth-token'), false);
+  assert.equal(store.has('survey-theme'), true);
 });
