@@ -34,6 +34,18 @@ export const ELASTIC_ZOOM_OVER_MAX = Math.log(1.8);
 export const ELASTIC_ZOOM_UNDER_MIN = Math.log(1 / 0.43);
 export const ELASTIC_SPRING_OMEGA = 11;
 export const ELASTIC_ZOOM_EASE_MS = 250;
+// Immediate Apple/Drawboard rubber-band zoom return decay (1/s): launches at
+// full speed on release (no ease-in hang), ~95% home by 215 ms, settled <0.05%
+// by ~350 ms, never bounces past the limit.
+export const ELASTIC_ZOOM_SPRING_DECAY = 14;
+// Mouse-wheel Ctrl+wheel zoom-limit notch bounce: quick, smooth log-scale tap
+// (~8% single notch, soft-capped at ~18%), peaking at ~90 ms and home by ~380 ms.
+export const ZOOM_NOTCH_OMEGA = 22;
+export const ZOOM_NOTCH_SHARE = 0.085;
+export const ZOOM_NOTCH_MAX_LOG = Math.log(1.18);
+const ZOOM_RAW_CAP_FRACTION = 0.96;
+const ZOOM_NOTCH_PULSE_PEAK = 4 * Math.exp(-2);
+const ZOOM_NOTCH_PULSE_LIFE_S = 0.45;
 // Momentum into an edge: cap the bounce so a hard flick never throws the page
 // more than this share of the viewport past the edge.
 export const ELASTIC_MAX_BOUNCE_FRACTION = 0.3;
@@ -85,6 +97,14 @@ function saturate(excess, ceiling, coefficient) {
   return ceiling * Math.tanh((excess * coefficient) / ceiling);
 }
 
+/** Inverse of saturate, safely clamped shy of the asymptote. */
+function inverseSaturate(shown, ceiling, coefficient) {
+  const c = Math.max(1e-6, finite(ceiling, 1));
+  const coeff = Math.max(1e-6, finite(coefficient, ELASTIC_RUBBER_COEFFICIENT));
+  const u = Math.max(-ZOOM_RAW_CAP_FRACTION, Math.min(ZOOM_RAW_CAP_FRACTION, shown / c));
+  return (c / coeff) * Math.atanh(u);
+}
+
 /**
  * Zoom with resistance past [minScale, maxScale] (log space, Drawboard-measured
  * ceilings x1.8 / x0.43). A 2x finger spread past the max shows x1.40, 3x
@@ -105,6 +125,123 @@ export function rubberScale(requestedScale, minScale, maxScale, {
 }
 
 /**
+ * Inverse of rubberScale (clamped shy of the asymptote so raw scale never
+ * grows unboundedly when pushing hard past min/max zoom).
+ */
+export function inverseRubberScale(shownScale, minScale, maxScale, {
+  coefficient = ELASTIC_RUBBER_COEFFICIENT,
+  overMax = ELASTIC_ZOOM_OVER_MAX,
+  underMin = ELASTIC_ZOOM_UNDER_MIN,
+} = {}) {
+  const s = Math.max(1e-6, finite(shownScale, 1));
+  const lo = Math.max(1e-6, finite(minScale, 1e-6));
+  const hi = Math.max(lo, finite(maxScale, lo));
+  if (s > hi) return hi * Math.exp(inverseSaturate(Math.log(s / hi), overMax, coefficient));
+  if (s < lo) return lo * Math.exp(inverseSaturate(Math.log(s / lo), underMin, coefficient));
+  return s;
+}
+
+/**
+ * Advance a zoom gesture's raw & shown scale across limits without accumulating
+ * infinite dead-zone excess: pushing past the asymptote caps raw excess cleanly,
+ * and reversing direction while overshot unwinds immediately on the first tick.
+ */
+export function stepRubberScale(currentRawScale, factor, minScale, maxScale, opts = {}) {
+  const coefficient = opts.coefficient ?? ELASTIC_RUBBER_COEFFICIENT;
+  const overMax = opts.overMax ?? ELASTIC_ZOOM_OVER_MAX;
+  const underMin = opts.underMin ?? ELASTIC_ZOOM_UNDER_MIN;
+  const lo = Math.max(1e-6, finite(minScale, 1e-6));
+  const hi = Math.max(lo, finite(maxScale, lo));
+  const f = Math.max(1e-4, finite(factor, 1));
+  const raw = Math.max(1e-6, finite(currentRawScale, lo));
+  const maxRawCap = hi * Math.exp((overMax / coefficient) * Math.atanh(ZOOM_RAW_CAP_FRACTION));
+  const minRawCap = lo * Math.exp(-(underMin / coefficient) * Math.atanh(ZOOM_RAW_CAP_FRACTION));
+
+  let nextRaw;
+  if (raw > hi && f < 1) {
+    // Reversing back toward maxScale: unwind directly in visible log space so
+    // there is zero "stuck" dead-zone even after pushing hard past the limit.
+    const shown = rubberScale(raw, lo, hi, opts);
+    const targetShown = shown * f;
+    nextRaw = targetShown <= hi ? targetShown : inverseRubberScale(targetShown, lo, hi, opts);
+  } else if (raw < lo && f > 1) {
+    // Reversing back toward minScale: unwind immediately in visible log space.
+    const shown = rubberScale(raw, lo, hi, opts);
+    const targetShown = shown * f;
+    nextRaw = targetShown >= lo ? targetShown : inverseRubberScale(targetShown, lo, hi, opts);
+  } else {
+    nextRaw = Math.min(maxRawCap, Math.max(minRawCap, raw * f));
+  }
+  return {
+    rawScale: nextRaw,
+    shownScale: rubberScale(nextRaw, lo, hi, opts),
+  };
+}
+
+/**
+ * Immediate Apple / WebKit-style rubber-band return for a zoom-limit overshoot:
+ * starts moving at full velocity at t = 0 (no slow ease-in hang), decelerates
+ * smoothly to exact scale 1 and offset (0, 0), and never bounces past.
+ */
+export function zoomLimitSpring(z0, tx0, ty0, t, k = ELASTIC_ZOOM_SPRING_DECAY) {
+  const safeZ0 = Math.max(1e-4, finite(z0, 1));
+  const logZ0 = Math.log(safeZ0);
+  const x0 = finite(tx0);
+  const y0 = finite(ty0);
+  const time = Math.max(0, finite(t));
+  const decay = Math.exp(-Math.max(1, finite(k, ELASTIC_ZOOM_SPRING_DECAY)) * time);
+  const logZ = logZ0 * decay;
+  const z = Math.exp(logZ);
+  const tx = x0 * decay;
+  const ty = y0 * decay;
+  const done = (Math.abs(logZ) < 5e-4 && Math.hypot(tx, ty) < 0.25) || time >= 1.2;
+  return done ? { z: 1, tx: 0, ty: 0, done: true } : { z, tx, ty, done: false };
+}
+
+/**
+ * Tactile log-scale bounce for mouse-wheel Ctrl+wheel notches hitting min or
+ * max zoom: pulses smoothly past the limit and springs home without re-layout.
+ */
+export function createZoomNotchBounce({ omega = ZOOM_NOTCH_OMEGA } = {}) {
+  let pulses = [];
+  const logAt = (now) => {
+    let total = 0;
+    for (const p of pulses) {
+      if (p.t0 === null) continue;
+      const t = (now - p.t0) / 1000;
+      if (t <= 0 || t >= ZOOM_NOTCH_PULSE_LIFE_S) continue;
+      const u = omega * t;
+      total += p.a * u * u * Math.exp(-u);
+    }
+    return total;
+  };
+  return {
+    kick({ direction = 1, intensity = 1, now = 0 } = {}) {
+      const dir = direction < 0 ? -1 : 1;
+      const curLog = logAt(now);
+      const headroom = Math.max(0, 1 - Math.abs(curLog) / ZOOM_NOTCH_MAX_LOG);
+      const scale = Math.max(0.25, Math.min(1.5, finite(intensity, 1)));
+      const peak = ZOOM_NOTCH_SHARE * scale * headroom;
+      pulses = pulses.filter((p) => p.t0 === null || (now - p.t0) / 1000 < ZOOM_NOTCH_PULSE_LIFE_S);
+      if (peak > 1e-4) {
+        pulses.push({ t0: null, a: dir * (peak / ZOOM_NOTCH_PULSE_PEAK) });
+      }
+    },
+    frame(now) {
+      if (!pulses.length) return { z: 1, active: false };
+      for (const p of pulses) if (p.t0 === null) p.t0 = now;
+      pulses = pulses.filter((p) => (now - p.t0) / 1000 < ZOOM_NOTCH_PULSE_LIFE_S);
+      if (!pulses.length) return { z: 1, active: false };
+      const logZ = logAt(now);
+      const clamped = Math.max(-ZOOM_NOTCH_MAX_LOG, Math.min(ZOOM_NOTCH_MAX_LOG, logZ));
+      return { z: Math.exp(clamped), active: true };
+    },
+    active() { return pulses.length > 0; },
+    reset() { pulses = []; },
+  };
+}
+
+/**
  * Critically damped spring toward 0 (no bounce-past): position and velocity
  * after `t` seconds from offset x0 moving at v0 (units / s).
  */
@@ -120,7 +257,7 @@ export function criticallyDampedSpring(x0, v0, t, omega = ELASTIC_SPRING_OMEGA) 
   };
 }
 
-/** Sine ease-in-out on [0, 1] — the curve Drawboard's zoom-limit return follows. */
+/** Sine ease-in-out on [0, 1] — kept for backwards compatibility and tests. */
 export function easeInOutSine(u) {
   const p = Math.min(1, Math.max(0, finite(u)));
   return 0.5 - 0.5 * Math.cos(Math.PI * p);
@@ -395,6 +532,10 @@ export function createLayoutShiftHold({ omega = ELASTIC_SPRING_OMEGA } = {}) {
 // a stretch that has had no input for WHEEL_STRETCH_WATCHDOG_MS, and ends any
 // spring after ELASTIC_SPRING_MAX_MS.
 export const WHEEL_OVERSCROLL_IDLE_MS = 100;
+// Tighter idle release for native-bounce trackpad streams (macOS / Windows PTP
+// finger events arrive every 8-18 ms, slow-drag max gap is 9 ms; 60 ms cuts the
+// perceptible pause after a clean finger lift with no momentum tail).
+export const WHEEL_OVERSCROLL_MAC_IDLE_MS = 60;
 // Above this speed (px/s) a stream reaching an edge counts as momentum hitting
 // it (~10 px per 60 Hz event); slower is a deliberate push.
 export const WHEEL_FLING_SPEED = 600;
