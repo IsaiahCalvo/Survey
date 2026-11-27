@@ -37,17 +37,18 @@ export function projectSurveyMarkerEntryShape(surveyMarker, bbox) {
 }
 
 /** The visible paint. */
-export function SurveyMarkerShapePaint({ projected, needsEntity, color, opacity = 1, transform }) {
+export function SurveyMarkerShapePaint({ projected, strokeWidth, needsEntity, color, opacity = 1, transform }) {
   if (!projected?.d) return null;
   const multiply = { pointerEvents: 'none', mixBlendMode: 'multiply' };
   if (projected.type === 'stroke') {
+    const resolvedWidth = Number(strokeWidth) > 0 ? Number(strokeWidth) : projected.width;
     return (
       <path
         data-survey-marker-shape="stroke"
         d={projected.d}
         fill="none"
         stroke={needsEntity ? MARKER_FREEHAND_PREVIEW_COLOR : (color || 'rgba(255,235,59,0.25)')}
-        strokeWidth={projected.width}
+        strokeWidth={resolvedWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
         opacity={opacity}
@@ -74,15 +75,16 @@ export function SurveyMarkerShapePaint({ projected, needsEntity, color, opacity 
 }
 
 /** The hover glow — the same page-unit blue halo a box marker gets. */
-export function SurveyMarkerShapeGlow({ projected, transform }) {
+export function SurveyMarkerShapeGlow({ projected, strokeWidth, transform }) {
   if (!projected?.d) return null;
+  const resolvedWidth = Number(strokeWidth) > 0 ? Number(strokeWidth) : projected.width;
   return (
     <path
       d={projected.d}
       fill="none"
       stroke="#4a90e2"
       strokeOpacity={0.4}
-      strokeWidth={projected.type === 'stroke' ? projected.width + 6 : 6}
+      strokeWidth={projected.type === 'stroke' ? resolvedWidth + 6 : 6}
       strokeLinecap="round"
       strokeLinejoin="round"
       transform={transform}
@@ -96,13 +98,14 @@ export function SurveyMarkerShapeGlow({ projected, transform }) {
  * so a press in the empty part of a freehand marker's box reaches what lies
  * under it. `hitBand` is the layer's minimum grab width (page units).
  */
-export function surveyMarkerShapeHitProps(projected, { interactive, hitBand = 10 }) {
+export function surveyMarkerShapeHitProps(projected, { interactive, hitBand = 10, strokeWidth } = {}) {
   if (projected.type === 'stroke') {
+    const resolvedWidth = Number(strokeWidth) > 0 ? Number(strokeWidth) : projected.width;
     return {
       d: projected.d,
       fill: 'none',
       stroke: 'rgba(0,0,0,0.001)',
-      strokeWidth: Math.max(projected.width, hitBand),
+      strokeWidth: Math.max(resolvedWidth, hitBand),
       strokeLinecap: 'round',
       strokeLinejoin: 'round',
       pointerEvents: interactive ? 'stroke' : 'none',

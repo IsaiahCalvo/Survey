@@ -502,3 +502,61 @@ export function carryMarkerShape(nextBounds, previousBounds) {
   const shape = previousBounds?.shape;
   return shape ? { ...nextBounds, shape } : nextBounds;
 }
+
+// #1815: Existing dot/small markers stored at 12 pt shrink to ~3 px pinpricks
+// on large sheets at phone default fit-to-page zoom (~24%). Keep a non-destructive
+// minimum visible screen size at low zoom without altering stored page bounds;
+// once zoomed in past the floor, pure viewBox scaling takes over naturally.
+export const MIN_MARKER_VISIBLE_PHONE_PX = 14;
+export const MIN_MARKER_VISIBLE_DESKTOP_PX = 10;
+export const MIN_STROKE_VISIBLE_PHONE_PX = 6;
+export const MIN_STROKE_VISIBLE_DESKTOP_PX = 4;
+export const MAX_MARKER_FLOOR_PAGE_UNITS = 180;
+
+export function isDotProjectedShape(projected) {
+  if (!projected || projected.type !== 'stroke') return false;
+  const pts = projected.points;
+  if (!Array.isArray(pts) || pts.length === 0) return false;
+  if (pts.length === 1) return true;
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return Math.hypot(maxX - minX, maxY - minY) <= 2;
+}
+
+export function effectiveMarkerStrokeWidth(projected, { inverseScale = 1, compact = false } = {}) {
+  if (!projected || projected.type !== 'stroke') return 0;
+  const base = Number(projected.width) || 0;
+  const scale = Number(inverseScale);
+  if (!(scale > 0)) return base;
+  const minPx = isDotProjectedShape(projected)
+    ? (compact ? MIN_MARKER_VISIBLE_PHONE_PX : MIN_MARKER_VISIBLE_DESKTOP_PX)
+    : (compact ? MIN_STROKE_VISIBLE_PHONE_PX : MIN_STROKE_VISIBLE_DESKTOP_PX);
+  const floorUnits = Math.min(MAX_MARKER_FLOOR_PAGE_UNITS, minPx * scale);
+  return Math.max(base, floorUnits);
+}
+
+export function effectiveMarkerBoxRect(bbox, { inverseScale = 1, compact = false } = {}) {
+  if (!bbox) return bbox;
+  const scale = Number(inverseScale);
+  if (!(scale > 0)) return bbox;
+  const minPx = compact ? MIN_MARKER_VISIBLE_PHONE_PX : MIN_MARKER_VISIBLE_DESKTOP_PX;
+  const minUnits = Math.min(MAX_MARKER_FLOOR_PAGE_UNITS, minPx * scale);
+  const w = Number(bbox.width) || 0;
+  const h = Number(bbox.height) || 0;
+  // Only expand small square/point box markers; leave room/area rectangles alone.
+  if (w >= minUnits || h >= minUnits) return bbox;
+  const nextW = Math.max(w, minUnits);
+  const nextH = Math.max(h, minUnits);
+  return {
+    ...bbox,
+    left: (Number(bbox.left) || 0) + w / 2 - nextW / 2,
+    top: (Number(bbox.top) || 0) + h / 2 - nextH / 2,
+    width: nextW,
+    height: nextH,
+  };
+}
