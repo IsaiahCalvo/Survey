@@ -7,15 +7,25 @@ import { summarizeSurvey } from './surveySummary.js';
 
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EEF7' } };
 
+/**
+ * Base filename for Export data (.xlsx): prefer the Project name, then the open
+ * sheet/document name (sans .pdf), then the template name (#1714).
+ */
+export function surveyExportBaseName({ projectName, documentName, templateName } = {}) {
+  const clean = (value) => String(value || '').trim();
+  const docBase = clean(documentName).replace(/\.pdf$/i, '').trim();
+  return clean(projectName) || docBase || clean(templateName) || 'survey';
+}
+
 /** Adds the sheet to an ExcelJS workbook. Returns the sheet name used. */
-export function addSummarySheet(workbook, { template, markers, when = new Date() }) {
+export function addSummarySheet(workbook, { template, markers, title = null, when = new Date() }) {
   const taken = new Set(workbook.worksheets.map((ws) => ws.name));
   const name = ['Summary', 'Survey summary', 'Survey summary (2)'].find((n) => !taken.has(n)) || `Summary ${taken.size + 1}`;
   const summary = summarizeSurvey({ template, markers });
   const ws = workbook.addWorksheet(name);
   ws.columns = [{ width: 28 }, { width: 24 }, { width: 12 }, { width: 14 }, { width: 14 }, { width: 14 }];
 
-  ws.addRow([`${template?.name || 'Survey'}: summary`]).font = { bold: true, size: 14 };
+  ws.addRow([`${String(title || '').trim() || template?.name || 'Survey'}: summary`]).font = { bold: true, size: 14 };
   ws.addRow([`Exported ${when.toLocaleString()}`]);
   const t = summary.totals;
   ws.addRow([`${t.items} item${t.items === 1 ? '' : 's'}: ${t.done} done, ${t.partly} partly done, ${t.notStarted} not started, ${t.withIssues} with issues.`]);

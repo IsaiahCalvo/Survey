@@ -65,6 +65,7 @@ import {
   renderPolygon,
   renderPolyline,
   renderTextMarkup,
+  textMarkupLinePathD,
   dimensionMarkLayout,
 } from '../utils/svgAnnotationRenderers';
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
@@ -173,7 +174,13 @@ import {
 } from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
-import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome, textMarkupHitPath } from '../utils/pdfTextMarkup.js';
+import {
+  buildTextMarkupQuadPathD,
+  getTextMarkupRangeHandlePositions,
+  getTextMarkupSelectionChrome,
+  padTextHighlightQuad,
+  textMarkupHitPath,
+} from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { TRANSFORM_SELECTION_EVENT, canTypeTurn, recolourObject, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { withMarkSubject } from '../utils/markSubject.js';
@@ -7813,23 +7820,65 @@ const SVGAnnotationLayerBody = memo(({
 
           return (
             <g transform={bbox.angle ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})` : undefined}>
-              {/* Hover outline (shown before click, not when already selected) */}
-              {annotationIsHovered && !cloudGlowGeometry && (
-                <rect
-                  x={bbox.left}
-                  y={bbox.top}
-                  width={bbox.width}
-                  height={bbox.height}
-                  fill="none"
-                  stroke="#4a90e2"
-                  strokeOpacity={0.4}
-                  // UX 2026-07-14 (zoom-scaling unification): page-unit glow
-                  // that scales with zoom — same max(6, sw+4) contract as the
-                  // gold rect/ellipse hover glow (covers text boxes and every
-                  // other type that lands in this generic bbox fallback).
-                  strokeWidth={Math.max(6, (Number(renderObj.strokeWidth) || 1) + 4)}
-                  style={{ pointerEvents: 'none' }}
-                />
+              {/* Hover / selection glow: text markups trace their actual line,
+                  squiggle, or highlight shape instead of painting a fat box over
+                  the words. Other generic types keep the bbox hover outline. */}
+              {renderObj?.data?.type === 'text-markup' ? (
+                (annotationIsHovered || annotationIsSelected) && (() => {
+                  const tmType = String(renderObj.data.markupType || renderObj.exportType || '').toLowerCase();
+                  if (tmType === 'highlight' || tmType === 'redact') {
+                    const quadGlowD = buildTextMarkupQuadPathD(renderObj);
+                    if (!quadGlowD) return null;
+                    return (
+                      <path
+                        d={quadGlowD}
+                        fill="none"
+                        stroke={HANDLE_RING}
+                        strokeOpacity={annotationIsSelected ? 0.7 : 0.55}
+                        strokeWidth={2.5}
+                        strokeLinejoin="round"
+                        data-hover-glow={`text-markup-${tmType}`}
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    );
+                  }
+                  const lineGlowD = textMarkupLinePathD(renderObj);
+                  if (!lineGlowD) return null;
+                  const tmLineWidth = Number.isFinite(renderObj.data.lineWidth)
+                    ? Math.max(0, renderObj.data.lineWidth)
+                    : 1.2;
+                  return (
+                    <path
+                      d={lineGlowD}
+                      fill="none"
+                      stroke={HANDLE_RING}
+                      strokeOpacity={annotationIsSelected ? 0.6 : 0.45}
+                      strokeWidth={Math.max(4.5, tmLineWidth + 3.5)}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      data-hover-glow={`text-markup-${tmType}`}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                })()
+              ) : (
+                annotationIsHovered && !cloudGlowGeometry && (
+                  <rect
+                    x={bbox.left}
+                    y={bbox.top}
+                    width={bbox.width}
+                    height={bbox.height}
+                    fill="none"
+                    stroke="#4a90e2"
+                    strokeOpacity={0.4}
+                    // UX 2026-07-14 (zoom-scaling unification): page-unit glow
+                    // that scales with zoom — same max(6, sw+4) contract as the
+                    // gold rect/ellipse hover glow (covers text boxes and every
+                    // other type that lands in this generic bbox fallback).
+                    strokeWidth={Math.max(6, (Number(renderObj.strokeWidth) || 1) + 4)}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )
               )}
               {/* Invisible hit-area ON TOP for easier clicking. A text
                   markup takes clicks on its own word runs only: one box over
@@ -8204,7 +8253,8 @@ const SVGAnnotationLayerBody = memo(({
       if (obj?.data?.type !== 'text-markup' || obj.data.markupType !== 'highlight' || obj.data.overlapMode !== 'uniform') continue;
       const key = `${obj.fill || obj.stroke || '#f4d35e'}:${Number(obj.opacity ?? 0.3)}`;
       if (!groups.has(key)) groups.set(key, { color: obj.fill || obj.stroke || '#f4d35e', opacity: Number(obj.opacity ?? 0.3), quads: [] });
-      groups.get(key).quads.push(...(obj.data.quads || []));
+      const quads = (obj.data.quads || []).map((q) => (obj?.isPdfImported ? q : padTextHighlightQuad(q)));
+      groups.get(key).quads.push(...quads);
     }
     return Array.from(groups.values()).map((group, index) => (
       <path

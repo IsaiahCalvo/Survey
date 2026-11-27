@@ -313,5 +313,5 @@ test('an exported Survey Marker names its Tag and Entity', async () => {
   const pdf = await PDFDocument.load(output);
   const marker = pageAnnotationDicts(pdf).find((dict) => dict.get(PDFName.of('Subtype'))?.asString?.() === '/SurveyMarker');
   assert.ok(marker, 'the Survey Marker is exported');
-  assert.equal(textValue(marker, 'Contents'), 'D-1-17, 100% Complete');
+  assert.equal(textValue(marker, 'Contents'), 'D-1-17 · Entity: 100% Complete');
 });

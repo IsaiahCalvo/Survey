@@ -6,10 +6,10 @@ import './TextSelectionActionBar.css';
 
 const GOLD = 'var(--accent)';
 const MARKS = [
-  { id: 'highlight', label: 'Highlight', icon: 'formatHighlight' },
-  { id: 'underline', label: 'Underline', icon: 'formatUnderline' },
-  { id: 'squiggly', label: 'Squiggle', icon: 'formatSquiggle' },
-  { id: 'strikeout', label: 'Strike Through', icon: 'formatStrikethrough' },
+  { id: 'highlight', label: 'Highlight', icon: 'textHighlightTool' },
+  { id: 'underline', label: 'Underline', icon: 'textUnderlineTool' },
+  { id: 'squiggly', label: 'Squiggle', icon: 'textSquiggleTool' },
+  { id: 'strikeout', label: 'Strike Through', icon: 'textStrikeTool' },
 ];
 
 const buttonBase = {
@@ -103,7 +103,7 @@ export default function TextSelectionActionBar({
         <div className="text-selection-action-bar__tools">
           {MARKS.map((mark) => <MarkControl key={mark.id} mark={mark} active={activeMarkupTypes.includes(mark.id)} focused={focusedPaintMark === mark.id} paint={paintByMark[mark.id]} onToggle={onAction} onFocusPaint={onFocusPaint} />)}
           <button className="text-selection-action-bar__button" type="button" aria-label={linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink'} {...chromeTip(linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink', 'below')} aria-pressed={linkActive} onClick={() => onAction('link')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('link'))} style={buttonBase}><ToolIcon name="formatHyperlink" emphasized={linkActive} /></button>
-          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} {...chromeTip(`${redactActive ? 'Remove' : 'Apply'} Redact`, 'below')} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} /></button>
+          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} {...chromeTip(`${redactActive ? 'Remove' : 'Apply'} Redact`, 'below')} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="textRedactTool" emphasized={redactActive} /></button>
         </div>
       </div>
       {hasSelection && linkEditorOpen && (

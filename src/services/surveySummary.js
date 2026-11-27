@@ -4,13 +4,19 @@
 // and saved, and for the Summary sheet in the Excel export.
 import { answerSetFor, isItemIssue } from './answerSets.js';
 import { categoriesOf, checklistOf, itemText, modulesOf } from './templateConfigShape.js';
+import { readTracking } from '../utils/markerTracking.js';
 
 const activeChecklist = (category) => checklistOf(category)
   .map((item, index) => (typeof item === 'string' ? { id: `item-${index}`, text: item } : item))
   .filter((item) => item && item.archived !== true && item.id);
 
 const nameOf = (marker) => String(marker?.name || '').trim() || 'Unnamed item';
-const statusOf = (i) => (i.total && i.answered === i.total ? 'done' : i.answered ? 'partly' : 'notStarted');
+const statusOf = (i) => {
+  if (i.trackingStatus === 'done') return 'done';
+  if (i.total && i.answered === i.total) return 'done';
+  if (i.trackingStatus === 'in-progress' || i.answered) return 'partly';
+  return 'notStarted';
+};
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
 /**
@@ -37,7 +43,8 @@ export function summarizeSurvey({ template, markers, itemIds = null, page = null
     const issues = group.checklist
       .filter((c) => isItemIssue(c, set, responses[c.id]?.selection))
       .map((c) => ({ text: itemText(c), answer: responses[c.id].selection }));
-    group.items.push({ id, name: nameOf(marker), total: group.checklist.length, answered: answered.length, issues });
+    const trackingStatus = readTracking(marker).status;
+    group.items.push({ id, name: nameOf(marker), total: group.checklist.length, answered: answered.length, trackingStatus, issues });
   }
   const categories = [...byCategory.values()]
     .filter((g) => g.items.length)
@@ -47,9 +54,9 @@ export function summarizeSurvey({ template, markers, itemIds = null, page = null
         id: category.id,
         name: category.name || 'Category',
         items: items.length,
-        done: items.filter((i) => i.total && i.answered === i.total).length,
-        partly: items.filter((i) => i.answered && i.answered < i.total).length,
-        notStarted: items.filter((i) => !i.answered).length,
+        done: items.filter((i) => statusOf(i) === 'done').length,
+        partly: items.filter((i) => statusOf(i) === 'partly').length,
+        notStarted: items.filter((i) => statusOf(i) === 'notStarted').length,
         issues: items.filter((i) => i.issues.length).map((i) => ({ id: i.id, name: i.name, lines: i.issues })),
         ...(rows ? { rows: items.map((i) => ({ ...i, status: statusOf(i) })) } : {}),
       };

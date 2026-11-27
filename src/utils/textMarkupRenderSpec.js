@@ -14,7 +14,7 @@
  *
  * Worker-safe: no React, fabric or DOM.
  */
-import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
+import { getTextMarkupUnderlineInset, padTextHighlightQuad } from './pdfTextMarkup.js';
 
 export const UNAPPLIED_REDACTION_WARNING_COLOR = '#d0021b';
 export const DEFAULT_TEXT_MARKUP_COLOR = '#f4d35e';
@@ -65,7 +65,9 @@ export function buildTextMarkupRenderSpec(obj, index = 0) {
       shapeId,
       key,
       mode: 'fill',
-      runs: quads.map(quadPolygon),
+      // Twins renderTextMarkup: a highlight made here reaches a little past
+      // its first and last letters; imported ones keep their own quads.
+      runs: (type === 'highlight' && !obj?.isPdfImported ? quads.map(padTextHighlightQuad) : quads).map(quadPolygon),
       closed: true,
       fill: isUnappliedImportedRedaction ? null : type === 'redact' ? '#000000' : color,
       stroke: isUnappliedImportedRedaction ? UNAPPLIED_REDACTION_WARNING_COLOR : null,
@@ -137,7 +139,7 @@ export function groupUniformTextMarkupHighlights(objects) {
     const opacity = Number(obj.opacity ?? 0.3);
     const key = `${color}:${opacity}`;
     if (!groups.has(key)) groups.set(key, { color, opacity, quads: [] });
-    groups.get(key).quads.push(...(obj.data.quads || []));
+    groups.get(key).quads.push(...(obj.data.quads || []).map((q) => (obj?.isPdfImported ? q : padTextHighlightQuad(q))));
   }
   return Array.from(groups.values()).map((group) => ({
     color: group.color,

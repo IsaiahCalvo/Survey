@@ -17,10 +17,10 @@
 export const TEXT_SELECTION_QUICK_MENU_MARKS = Object.freeze([
   // Same order and names as the docked text-selection bar
   // (TextSelectionActionBar MARKS), so the two read as one set.
-  Object.freeze({ id: 'highlight', label: 'Highlight', icon: 'formatHighlight' }),
-  Object.freeze({ id: 'underline', label: 'Underline', icon: 'formatUnderline' }),
-  Object.freeze({ id: 'squiggly', label: 'Squiggle', icon: 'formatSquiggle' }),
-  Object.freeze({ id: 'strikeout', label: 'Strike Through', icon: 'formatStrikethrough' }),
+  Object.freeze({ id: 'highlight', label: 'Highlight', icon: 'textHighlightTool' }),
+  Object.freeze({ id: 'underline', label: 'Underline', icon: 'textUnderlineTool' }),
+  Object.freeze({ id: 'squiggly', label: 'Squiggle', icon: 'textSquiggleTool' }),
+  Object.freeze({ id: 'strikeout', label: 'Strike Through', icon: 'textStrikeTool' }),
 ]);
 
 // Gap between the selection and the menu.

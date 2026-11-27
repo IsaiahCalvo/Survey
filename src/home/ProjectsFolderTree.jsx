@@ -1251,6 +1251,7 @@ export default function ProjectsFolderTree({
       tab="projects"
       onNav={onNav}
       title="Projects"
+      mobileTitle={mobileDrillProject ? (mobileDrillProject.name || 'Untitled project') : null}
       subtitle={subtitle}
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
