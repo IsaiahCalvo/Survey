@@ -27547,6 +27547,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       },
       getCurrentScale: () => scaleRef.current,
       getMinimumScale: () => pdfjsViewerRef.current?.getMinimumScale?.() || 0.01,
+      getMaximumScale: () => pdfjsViewerRef.current?.getMaximumScale?.() || 40,
       setScale: (value, context = {}) => setScaleWithViewportPreservation(value, {
         ...context,
         mode: context?.mode || ZOOM_MODES.MANUAL,
@@ -41111,6 +41112,7 @@ ${pageBlocks}
                                   pickOwnerPageNumber={selectedToolbarIndices?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
                                   onTextSelectManipulationChange={handleTextSelectManipulationChange}
+                                  textDragModeActive={textDragToolsOn && Boolean(textHighlightMode)}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
                                   // Phase 35 Plan 03 — per-user delete authority. viewerId
