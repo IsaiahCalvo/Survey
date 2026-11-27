@@ -700,6 +700,8 @@ export const AuthProvider = ({ children }) => {
     if (!user?.id) return;
 
     const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       fetchSubscriptionTier(user.id);
     }, 300_000); // 5 minutes
 

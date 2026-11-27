@@ -70,7 +70,8 @@ export function useDualWriteQueue(userId) {
     // tick() reads the three helpers synchronously. Each helper internally
     // inspects queuedAt + entry.quarantined per the queue module's contract —
     // the hook delegates rather than duplicating that logic.
-    function tick() {
+    function tick(force = false) {
+      if (!force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       const next = {
         stuckCount: getStuckCount(userId),
         quarantinedAnnoIds: getQuarantinedAnnoIds(userId),
@@ -92,10 +93,24 @@ export function useDualWriteQueue(userId) {
       });
     }
 
+    const onVisibilityChange = () => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+        tick(true);
+      }
+    };
+
     // Run immediately so the first paint reflects the current queue state.
-    tick();
+    tick(true);
     const handle = setInterval(tick, POLL_INTERVAL_MS);
-    return () => clearInterval(handle);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+    return () => {
+      clearInterval(handle);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+    };
   }, [userId]);
 
   return state;

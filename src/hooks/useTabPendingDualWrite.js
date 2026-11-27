@@ -25,13 +25,61 @@
 
 import { useEffect, useState } from 'react';
 import { readQueue } from '../lib/collab/crdtDualWriteQueue.js';
-import { getAuthSnapshot } from '../supabaseClient.js';
+import { getAuthSnapshot, supabase } from '../supabaseClient.js';
 
 // UX: 1s polling tick matches Plan 30-05's useDualWriteQueue cadence so
 // the tab dot lights up within 1s of an entry being enqueued, AND clears
 // within 1s of the queue draining. Cost is one localStorage read +
 // JSON.parse per tick — negligible.
 const POLL_INTERVAL_MS = 1_000;
+const AUTH_RETRY_INTERVAL_MS = 10_000;
+
+function isTabHidden() {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+}
+
+/**
+ * Resolve the signed-in user id once and keep it updated via Supabase auth
+ * events instead of calling `getAuthSnapshot()` (which acquires the GoTrue
+ * storage lock) every second forever.
+ */
+function createAuthUserIdTracker() {
+  let cachedUserId = undefined;
+  let lastResolveAttemptAt = 0;
+
+  async function resolveUserId() {
+    if (cachedUserId !== undefined) {
+      if (cachedUserId !== null || Date.now() - lastResolveAttemptAt < AUTH_RETRY_INTERVAL_MS) {
+        return cachedUserId;
+      }
+    }
+    lastResolveAttemptAt = Date.now();
+    try {
+      const auth = await getAuthSnapshot();
+      cachedUserId = auth?.sessionUserId ?? null;
+    } catch (_e) {
+      cachedUserId = null;
+    }
+    return cachedUserId;
+  }
+
+  let authSub = null;
+  try {
+    const res = supabase?.auth?.onAuthStateChange?.((_event, session) => {
+      cachedUserId = session?.user?.id ?? null;
+    });
+    authSub = res?.data?.subscription ?? null;
+  } catch (_e) {
+    authSub = null;
+  }
+
+  return {
+    resolveUserId,
+    dispose() {
+      try { authSub?.unsubscribe?.(); } catch (_e) { /* best effort */ }
+    },
+  };
+}
 
 /**
  * Subscribe to the dual-write retry queue for a single documentId.
@@ -58,15 +106,11 @@ export function useDocsPendingDualWrite() {
 
   useEffect(() => {
     let cancelled = false;
+    const authTracker = createAuthUserIdTracker();
 
-    async function tick() {
-      let userId = null;
-      try {
-        const auth = await getAuthSnapshot();
-        userId = auth?.sessionUserId ?? null;
-      } catch (_e) {
-        userId = null;
-      }
+    async function tick(force = false) {
+      if (!force && isTabHidden()) return;
+      const userId = await authTracker.resolveUserId();
       if (cancelled) return;
 
       const next = new Set();
@@ -94,11 +138,22 @@ export function useDocsPendingDualWrite() {
       });
     }
 
-    tick();
+    const onVisibilityChange = () => {
+      if (!isTabHidden()) void tick(true);
+    };
+
+    void tick(true);
     const handle = setInterval(tick, POLL_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
     return () => {
       cancelled = true;
       clearInterval(handle);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+      authTracker.dispose();
     };
   }, []);
 
@@ -116,19 +171,11 @@ export function useTabPendingDualWrite(documentId) {
     }
 
     let cancelled = false;
+    const authTracker = createAuthUserIdTracker();
 
-    async function tick() {
-      // Resolve userId from the cached Supabase auth session. getAuthSnapshot
-      // is async (Promise<{ sessionUserId, ... }>); falls back to no-op when
-      // unauthenticated. The cost is one call per tick — Supabase caches the
-      // session locally so this is a synchronous-feel read in practice.
-      let userId = null;
-      try {
-        const auth = await getAuthSnapshot();
-        userId = auth?.sessionUserId ?? null;
-      } catch (_e) {
-        userId = null;
-      }
+    async function tick(force = false) {
+      if (!force && isTabHidden()) return;
+      const userId = await authTracker.resolveUserId();
       if (cancelled) return;
 
       if (!userId) {
@@ -177,12 +224,23 @@ export function useTabPendingDualWrite(documentId) {
       setHasPending((prev) => (prev === pending ? prev : pending));
     }
 
+    const onVisibilityChange = () => {
+      if (!isTabHidden()) void tick(true);
+    };
+
     // Run immediately so the first paint reflects the current queue state.
-    tick();
+    void tick(true);
     const handle = setInterval(tick, POLL_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
     return () => {
       cancelled = true;
       clearInterval(handle);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+      authTracker.dispose();
     };
   }, [documentId]);
 
