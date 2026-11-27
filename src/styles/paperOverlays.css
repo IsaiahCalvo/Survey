@@ -66,8 +66,10 @@ html[data-paper-overlay] .survey-pdfjs-page-div > .survey-pdfjs-page-canvas + di
     text-align: center;
     cursor: pointer;
 }
-.paper-overlay-swatch:hover { background: var(--hover-bg, rgba(127, 127, 127, 0.12)); color: var(--text-2); }
-.paper-overlay-swatch:focus-visible { outline: 2px solid var(--focus-ring, #3b82f6); outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) {
+    .paper-overlay-swatch:hover:not(:active) { background: var(--hover); color: var(--text-2); }
+}
+.paper-overlay-swatch:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 /* Like Drawboard, the picked one shows by its name; we also edge its page. */
 .paper-overlay-swatch[aria-checked="true"] { color: var(--text-1); font-weight: 600; }
 .paper-overlay-swatch__page {

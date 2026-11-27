@@ -127,6 +127,7 @@
 .survey-hub h1.title { font-size: 20px; line-height: 1; letter-spacing: -0.03em; margin: 0; font-weight: 700; }
 .survey-hub .crumb { color: var(--ink-200); font-size: 12px; }
 .survey-hub .crumb b { color: var(--bone-100); font-weight: 600; }
+.survey-hub .hub-title-mobile,
 .survey-hub .projects-mobile-summary,
 .survey-hub .templates-mobile-summary,
 .survey-hub .documents-mobile-search-actions,
@@ -1122,7 +1123,7 @@
   .survey-hub .mobile-rail-nav {
     display: none;
     order: 1;
-    flex: none;
+    flex: 0 1 auto;
     min-width: 0;
     align-self: baseline;
     position: relative;
@@ -1144,6 +1145,8 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    max-width: 100%;
+    min-width: 0;
     margin: 0;
     padding: 0;
     border: 0;
@@ -1154,6 +1157,13 @@
     line-height: inherit;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .survey-hub .hub-title-switch__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   /* 44px tall to the finger whatever the title's painted height. It reaches
@@ -1268,6 +1278,18 @@
     line-height: 1.05;
     /* Spec guard (docs/design/design.md): no negative tracking on mobile. */
     letter-spacing: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .survey-hub .hub-title-desktop {
+    display: none;
+  }
+
+  .survey-hub .hub-title-mobile {
+    display: inline !important;
   }
 
   .survey-hub .crumb {
@@ -2647,6 +2669,20 @@
      lands where each row's content ends. */
   .survey-hub .projects-mobile-project-files-actions {
     margin-right: -9px;
+  }
+
+  .survey-hub .projects-mobile-handoff-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .survey-hub .projects-mobile-handoff-actions .btn {
+    min-height: 36px;
+    font-size: 12px;
+    padding: 0 10px;
   }
 
   /* The file list sits flush in the card: the panel look moves off it. */
@@ -6008,3 +6044,35 @@ html[data-look='suite'] .survey-hub .templates-mobile-back-button { background: 
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
+
+/* Narrow / touch viewports (<= 767px): enforce 44px minimum hit targets on
+   sidebar Sign in, New project, and toolbar Select buttons while preserving
+   compact desktop (>= 768px) layout and phone header row geometry. */
+@media (max-width: 767px) {
+  .survey-hub .side .profile-signin {
+    min-height: 44px;
+  }
+
+  .survey-hub .hub-new-btn,
+  .survey-hub .hub-empty-state .btn.primary {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .survey-hub .hub-panel-head .section-icon-btn.section-icon-btn:not(.is-word),
+  .survey-hub .hub-section-head .section-icon-btn.section-icon-btn:not(.is-phone):not(.is-word),
+  .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .survey-hub .hub-panel-head .section-icon-btn.section-icon-btn.is-word,
+  .survey-hub .hub-section-head .section-icon-btn.section-icon-btn.is-word:not(.is-phone) {
+    height: 44px;
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+

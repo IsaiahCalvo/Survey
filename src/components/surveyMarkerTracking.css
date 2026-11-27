@@ -217,7 +217,7 @@
 }
 
 .survey-tracking__activity-toggle:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--accent));
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 

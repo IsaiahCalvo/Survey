@@ -69,6 +69,7 @@ import {
 import { linkGoToLabel } from '../utils/linkTool.js';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
 import { SELECTION_CONTROLS } from '../utils/markMenuPlacement.js';
+import { isTypingTarget } from '../utils/typingTarget.js';
 import './SelectionQuickBar.css';
 
 // How many entity swatches the bar draws before "All N" (SurveyOverflowRow).
@@ -329,6 +330,12 @@ export default function SelectionQuickBar({
   // One placement pass: read the selection, place the bar, show or hide it.
   const frameRef = useRef(0);
   const turningRef = useRef(false);
+  // #1655: holding Shift on the canvas is multi-select; step the floating bar
+  // aside so Shift-click reaches nearby marks underneath instead of hitting a
+  // bar button.
+  const shiftHeldRef = useRef(false);
+  const popoverOpenRef = useRef(false);
+  popoverOpenRef.current = Boolean(lineOpen || kindOpen || measureOpen || authorsOpen);
   const heldGestureRef = useRef(null);
   const place = useCallback(() => {
     frameRef.current = 0;
@@ -352,7 +359,7 @@ export default function SelectionQuickBar({
       if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
       protectedRects.current = [selection.frame, ...selection.keepOut].filter(Boolean);
       next.locked = selection.locked;
-      if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
+      if (selection.frame && !selection.gesture && !turningRef.current && !shiftHeldRef.current && !selection.inert) {
         const dockedNow = dockOnRef.current && !phoneRef.current && isSelectionBarDocked();
         const bounds = viewerBounds(phoneRef.current);
         const placed = computeSelectionQuickBarPosition({
@@ -401,12 +408,32 @@ export default function SelectionQuickBar({
       turningRef.current = false;
       schedule();
     };
+    const onKeyDown = (event) => {
+      if (event.key !== 'Shift' || shiftHeldRef.current) return;
+      if (popoverOpenRef.current) return;
+      const focused = document.activeElement;
+      if (focused?.closest?.('[data-selection-quick-bar], [data-selection-quick-bar-popover]')) return;
+      if (isTypingTarget(focused)) return;
+      shiftHeldRef.current = true;
+      place();
+    };
+    const clearShift = () => {
+      if (!shiftHeldRef.current) return;
+      shiftHeldRef.current = false;
+      schedule();
+    };
+    const onKeyUp = (event) => {
+      if (event.key === 'Shift') clearShift();
+      else onAny();
+    };
     window.addEventListener('scroll', onAny, true);
     window.addEventListener('resize', onAny);
     window.addEventListener('pointerdown', onPress, true);
     window.addEventListener('pointerup', onRelease, true);
     window.addEventListener('pointercancel', onRelease, true);
-    window.addEventListener('keyup', onAny, true);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', clearShift);
     const root = shownElement('[data-testid="pdf-container"]')
       || shownElement('[data-mobile-pdf-surface="false"]')
       || document.body;
@@ -426,7 +453,10 @@ export default function SelectionQuickBar({
       window.removeEventListener('pointerup', onRelease, true);
       window.removeEventListener('pointercancel', onRelease, true);
       turningRef.current = false;
-      window.removeEventListener('keyup', onAny, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', clearShift);
+      shiftHeldRef.current = false;
       observer?.disconnect();
       bodyObserver?.disconnect();
       if (frameRef.current) {

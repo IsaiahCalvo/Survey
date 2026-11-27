@@ -619,7 +619,7 @@ const ProjectDropList = ({ projects = [], onDrop }) => {
 // Read once at load, like every feature flag (a /flags change shows on reload).
 const SUITE_LIBRARY_ON = (() => { try { return isFeatureOn('suite'); } catch { return false; } })();
 
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined, projectDrop = null, documentsNav = null }) => {
+export const HubShell = ({ tab, onNav, title, mobileTitle = null, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined, projectDrop = null, documentsNav = null }) => {
   const tip = useTooltip();
   const expoNativeShell = isExpoNativeShell();
 
@@ -709,8 +709,15 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
         <main ref={mobileSwipeSurfaceRef} className="main paper">
           <div className="header" data-select-reveal-host="">
             <div className="header-title-block">
-              <MobileRailNav mode={mobileNavMode} title={title} tab={tab} navItems={navItems} onNav={onNav} />
-              <h1 className="title">{title}</h1>
+              <MobileRailNav mode={mobileNavMode} title={mobileTitle || title} tab={tab} navItems={navItems} onNav={onNav} />
+              <h1 className="title">
+                {mobileTitle ? (
+                  <>
+                    <span className="hub-title-desktop">{title}</span>
+                    <span className="hub-title-mobile">{mobileTitle}</span>
+                  </>
+                ) : title}
+              </h1>
               {/* A plain-text subtitle gets its own element: on phones the
                   subtitle row dissolves into the header row (display: contents),
                   and bare text there has no order, so it landed before the title. */}

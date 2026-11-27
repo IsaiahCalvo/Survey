@@ -37,6 +37,8 @@ import SurveyMarkerNotes from './components/SurveyMarkerNotes';
 import SurveyMarkerTracking, { SurveyMarkerTrackingBadge } from './components/SurveyMarkerTracking.jsx';
 import { useDocumentPeople } from './hooks/useDocumentPeople.js';
 import { EMPTY_TRACKING_FILTER, nextTracking, passesTrackingFilter, todayKey } from './utils/markerTracking.js';
+import { recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
+import { buildSurveyMarkerUpdateHistoryRow } from './services/surveyMarkerHistory.js';
 import { buildNoteWithMedia, getSurveyMediaUrl, normalizeNoteMedia, uploadSurveyMedia } from './services/surveyMediaService';
 import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
 import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
@@ -1612,22 +1614,38 @@ const SurveySpacesRail = ({
       const prevNote = markerNoteObject(existing?.note);
       const nextNote = updater(prevNote);
       if (!nextNote || nextNote === prevNote) return prev;
+      const prevText = typeof prevNote?.text === 'string' ? prevNote.text.trim() : '';
+      const nextText = typeof nextNote?.text === 'string' ? nextNote.text.trim() : '';
       const answered = lineAnswer ? {
         checklistResponses: {
           ...existing?.checklistResponses,
           [lineAnswer.lineId]: { ...existing?.checklistResponses?.[lineAnswer.lineId], selection: lineAnswer.answerOf(nextNote) },
         },
       } : {};
+      const nextMarker = {
+        ...(existing || {}),
+        note: nextNote,
+        ...answered,
+      };
+      if (pdfFile?.id && nextText !== prevText) {
+        const actorName = user?.user_metadata?.full_name || user?.name || user?.email?.split('@')[0] || 'Someone';
+        const change = nextText ? (prevText ? 'updated note' : 'added note') : 'cleared note';
+        void recordAndNotifyDocumentHistoryEvent(buildSurveyMarkerUpdateHistoryRow({
+          markerId: annotationId,
+          marker: nextMarker,
+          documentId: pdfFile.id,
+          userId: user?.id || null,
+          actorName,
+          change,
+          updatedAt: new Date().toISOString(),
+        }));
+      }
       return {
         ...prev,
-        [annotationId]: {
-          ...(existing || {}),
-          note: nextNote,
-          ...answered,
-        }
+        [annotationId]: nextMarker,
       };
     });
-  }, [setSurveyMarkers]);
+  }, [pdfFile?.id, setSurveyMarkers, user]);
 
   // Survey agent (KAL-527): the agent chat (survey_agent flag) and browser
   // agents (WebMCP) write through this panel's own writes, so an agent change
@@ -1815,9 +1833,26 @@ const SurveySpacesRail = ({
       const next = { ...existing };
       if (tracking) next.tracking = tracking;
       else delete next.tracking;
+      if (pdfFile?.id) {
+        const actorName = user?.user_metadata?.full_name || user?.name || user?.email?.split('@')[0] || 'Someone';
+        const parts = [];
+        if (patch && 'status' in patch) parts.push(`set status to ${tracking?.status || 'open'}`);
+        if (patch && 'assigneeId' in patch) parts.push(tracking?.assigneeId ? 'updated assignee' : 'cleared assignee');
+        if (patch && 'due' in patch) parts.push(tracking?.due ? `set due date to ${tracking.due}` : 'cleared due date');
+        const change = parts.length ? parts.join(', ') : 'updated tracking';
+        void recordAndNotifyDocumentHistoryEvent(buildSurveyMarkerUpdateHistoryRow({
+          markerId: annotationId,
+          marker: next,
+          documentId: pdfFile.id,
+          userId: user?.id || null,
+          actorName,
+          change,
+          updatedAt: new Date().toISOString(),
+        }));
+      }
       return { ...prev, [annotationId]: next };
     });
-  }, [setSurveyMarkers, user?.id]);
+  }, [pdfFile?.id, setSurveyMarkers, user]);
   const renderSurveyMarkerTracking = (annotationId, variant) => (trackingOn ? (
     <SurveyMarkerTracking
       key={`tracking-${annotationId}`}
@@ -2604,7 +2639,7 @@ const SurveySpacesRail = ({
                             className="mobile-survey-template-button"
                             aria-label={`Template: ${selectedTemplate.name || 'Survey'}. Switch template`}
                             aria-expanded={isMobileTemplateSwitching}
-                            aria-controls="survey-template-list"
+                            aria-controls={isMobileTemplateSwitching ? 'survey-template-list' : undefined}
                             onClick={() => {
                               // The category rows turn into the template rows
                               // and back (captureRailMorph).

@@ -78,7 +78,8 @@
    hub.css .hub-rename, which every rename field in the editor carries. */
 /* UX (KAL-69): placeholders are greyed italic so an empty required row reads as
    "type here", visibly different from a row that genuinely holds short text. */
-.ed-scope .inline-edit::placeholder { color: var(--text-disabled); font-style: italic; }
+.ed-scope .inline-edit::placeholder { color: var(--text-3); font-style: italic; opacity: 1; }
+.ed-scope .inline-edit:disabled::placeholder { color: var(--text-disabled); }
 .ed-scope .cat-title { cursor: text; }
 
 /* Prevent horizontal scrolling anywhere inside the editor */

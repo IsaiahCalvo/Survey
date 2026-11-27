@@ -93,6 +93,27 @@ function appName(app) {
  *   extras: {media:number, schedules:number, riser:boolean, noPage:number}
  * }}
  */
+const LEGACY_PLOT_FLOOR_LABELS = Object.freeze({
+  '1000': 'R',
+  '1.5': 'M1',
+  '-0.5': 'LL',
+  '0': 'G',
+  '-1': 'P1',
+  '-2': 'P2',
+  '-3': 'P3',
+});
+
+/**
+ * Normalize legacy numeric Plot floor codes ("1000" -> "R", "1.5" -> "M1",
+ * "-0.5" -> "LL", "0" -> "G", "-1" -> "P1") while keeping canonical labels
+ * untouched (#1598).
+ */
+export function normalizeJobFloorLabel(value) {
+  const cleaned = clean(value);
+  if (!cleaned) return null;
+  return LEGACY_PLOT_FLOOR_LABELS[cleaned] || cleaned;
+}
+
 export function jobToWalk(manifest, library = []) {
   const job = manifest?.job || {};
   const entries = new Map(list(library).filter((e) => clean(e?.entryId)).map((e) => [clean(e.entryId), e]));
@@ -107,7 +128,7 @@ export function jobToWalk(manifest, library = []) {
     if (!floor) {
       floor = {
         id: file,
-        name: clean(page.title) || clean(page.floor) || file.replace(/^.*\//, '').replace(/\.pdf$/i, ''),
+        name: clean(page.title) || normalizeJobFloorLabel(page.floor) || file.replace(/^.*\//, '').replace(/\.pdf$/i, ''),
         asset: /\.pdf$/i.test(file) ? { storage_path: file, format: 'pdf' } : { storage_path: file, format: 'image' },
         nodes: [],
       };
@@ -164,7 +185,7 @@ export function jobToWalk(manifest, library = []) {
       // The item's own place wins; the page gives the rest.
       building: clean(raw.building) || clean(page.building),
       wing: clean(raw.wing) || clean(page.wing),
-      floor_label: clean(raw.floor) || clean(page.floor),
+      floor_label: normalizeJobFloorLabel(raw.floor) || normalizeJobFloorLabel(page.floor),
       location: clean(raw.location),
       // Where Plot had it, so a send back can tell what the field changed
       // (KAL-758). Only job files carry it.

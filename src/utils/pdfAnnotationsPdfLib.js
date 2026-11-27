@@ -592,6 +592,41 @@ const normalizeSurveyMarkerBounds = (surveyMarker) => {
   return { left, top, width, height };
 };
 
+const SURVEY_STATUS_LABELS = {
+  open: 'Open',
+  'in-progress': 'In progress',
+  done: 'Done',
+  'not-started': 'Not started',
+  issue: 'Issue',
+  blocked: 'Blocked',
+};
+
+/**
+ * Human-readable text for a Survey Marker's PDF/XFDF `/Contents` (#1712):
+ * marker name, labeled Entity (not a bare ", GC" suffix), Status when set,
+ * and Note when present.
+ */
+export function formatSurveyMarkerContents(surveyMarker) {
+  const parts = [];
+  const name = String(surveyMarker?.name ?? '').trim();
+  if (name) parts.push(name);
+  const entity = String(surveyMarker?.entityName ?? '').trim();
+  if (entity) parts.push(`Entity: ${entity}`);
+  const rawStatus = String(surveyMarker?.tracking?.status ?? surveyMarker?.status ?? '').trim().toLowerCase();
+  if (rawStatus && rawStatus !== 'open' && rawStatus !== 'not-started') {
+    const label = SURVEY_STATUS_LABELS[rawStatus] || rawStatus.replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+    parts.push(`Status: ${label}`);
+  }
+  const rawNote = typeof surveyMarker?.note === 'string'
+    ? surveyMarker.note
+    : (typeof surveyMarker?.note?.text === 'string'
+      ? surveyMarker.note.text
+      : (typeof surveyMarker?.notes === 'string' ? surveyMarker.notes : ''));
+  const note = rawNote.trim();
+  if (note) parts.push(`Note: ${note}`);
+  return parts.join(' · ');
+}
+
 const surveyMarkerToFabricRect = (surveyMarker, annotationId) => {
   const bounds = normalizeSurveyMarkerBounds(surveyMarker);
   if (!bounds) return null;
@@ -614,9 +649,8 @@ const surveyMarkerToFabricRect = (surveyMarker, annotationId) => {
     moduleId: surveyMarker?.moduleId ?? surveyMarker?.spaceId ?? null,
     spaceId: surveyMarker?.spaceId ?? null,
     regionId: surveyMarker?.regionId ?? null,
-    // What a PDF viewer's comment list shows for it: the Tag, then the Entity.
-    markerLabel: [surveyMarker?.name, surveyMarker?.entityName]
-      .map((part) => String(part ?? '').trim()).filter(Boolean).join(', '),
+    // What a PDF viewer's comment list and XFDF show for it (#1712).
+    markerLabel: formatSurveyMarkerContents(surveyMarker),
   };
 };
 
@@ -762,7 +796,7 @@ export function buildPdfExportAnnotationPlan({
     const isActiveModuleSurveyMarker = (
       item.source === 'survey-marker'
       && activeModuleId != null
-      && (item.moduleId ?? null) === activeModuleId
+      && (activeModuleId === '*' || (item.moduleId ?? null) === activeModuleId)
     );
     if (item.source === 'survey-marker' && !isActiveModuleSurveyMarker) {
       recordSkip(diagnostics, item, 'survey-marker-export-excluded');

@@ -196,7 +196,7 @@
   inset: -2px 0;
 }
 
-.survey-notes__media-btn:active > svg {
+.survey-notes__media-btn:not(:disabled):active > svg {
   transform: scale(0.88);
 }
 
@@ -206,7 +206,7 @@
 
 .survey-notes__media-btn:disabled {
   color: var(--text-disabled);
-  cursor: default;
+  cursor: not-allowed;
 }
 
 .survey-notes--desktop .survey-notes__media-btn {
@@ -515,13 +515,14 @@
   color: var(--text-2);
 }
 
-.survey-media-sheet__group > button:active,
-.survey-media-sheet__cancel:active {
+.survey-media-sheet__group > button:not(:disabled):active,
+.survey-media-sheet__cancel:not(:disabled):active {
   background: var(--pressed);
 }
 
 .survey-media-sheet__group > button:disabled {
   color: var(--text-disabled);
+  cursor: not-allowed;
 }
 
 .survey-media-sheet__cancel {
@@ -571,7 +572,7 @@
 
 .survey-media-menu > button:disabled {
   color: var(--text-disabled);
-  cursor: default;
+  cursor: not-allowed;
 }
 
 /* ---- full-screen viewer ------------------------------------------------- */

@@ -114,12 +114,19 @@ export function dimensionCaptionStyle(obj) {
   };
 }
 
-/** A mark's caption size (points): its own pt size, else 9 pt at Medium, scaled by S / L. */
+/** A mark's caption size (points): its own pt size, else 9 pt at Medium (scaled up for thick strokes > 4 pt), scaled by S / L. */
 export function dimensionCaptionPt(obj) {
   const own = normalizeDimensionCaptionPt(obj?.data?.measure?.dim?.size);
   if (own != null) return own;
+  const strokeWidth = Number(obj?.strokeWidth);
+  const basePt = Number.isFinite(strokeWidth) && strokeWidth > 4
+    ? Math.min(DIMENSION_CAPTION_PT_MAX, Math.max(DIMENSION_CAPTION_PT, Math.round(strokeWidth * 1.25 * 100) / 100))
+    : DIMENSION_CAPTION_PT;
   const px = Number(obj?.data?.measure?.captionSize);
-  return Number.isFinite(px) && px > 0 ? (DIMENSION_CAPTION_PT * px) / CAPTION_SIZE_BASE_PX : DIMENSION_CAPTION_PT;
+  if (Number.isFinite(px) && px > 0) {
+    return Math.min(DIMENSION_CAPTION_PT_MAX, Math.max(DIMENSION_CAPTION_PT_MIN, Math.round(((basePt * px) / CAPTION_SIZE_BASE_PX) * 100) / 100));
+  }
+  return basePt;
 }
 
 /** A moved caption's offset { x, y } (points, the line's own frame), or null. */

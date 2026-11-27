@@ -67,7 +67,8 @@ test('a saved sign-in that only lacks the network keeps loading and retries inst
   assert.match(AUTH_CONTEXT, /if \(!session && offline\) \{/);
   assert.match(AUTH_CONTEXT, /window\.addEventListener\('online', readBootSession\)/);
   assert.match(AUTH_CONTEXT, /document\.addEventListener\('visibilitychange', readBootSessionWhenVisible\)/);
-  assert.match(AUTH_CONTEXT, /setInterval\(readBootSession, 5_000\)/);
+  assert.match(AUTH_CONTEXT, /AUTH_BOOT_RETRY_BASE_MS = 5_000/);
+  assert.match(AUTH_CONTEXT, /scheduleBootRetry\(delayMs\)/);
 });
 
 test('the sign-in sheet closes itself once someone is signed in', () => {

@@ -1251,6 +1251,7 @@ export default function ProjectsFolderTree({
       tab="projects"
       onNav={onNav}
       title="Projects"
+      mobileTitle={mobileDrillProject ? (mobileDrillProject.name || 'Untitled project') : null}
       subtitle={subtitle}
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
@@ -1811,6 +1812,33 @@ export default function ProjectsFolderTree({
                       {projectRoleFor(mobileDrillProject) !== 'viewer' ? <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} /> : null}
                     </SectionIconActions>
                   </div>
+                  {(
+                    (projectRoleFor(mobileDrillProject) !== 'viewer' && (onAddFromWalkthru || onAddFromJobFile || onAddFromDrive))
+                    || (onSendBackToPlot && isJobProject(mobileDrillProject?.id))
+                  ) ? (
+                    <div className="projects-mobile-handoff-actions" data-mobile-project-handoff="">
+                      {projectRoleFor(mobileDrillProject) !== 'viewer' && onAddFromWalkthru ? (
+                        <button type="button" className="btn" data-project-add-walkthru onClick={() => onAddFromWalkthru(mobileDrillProject)}>
+                          <Icon name="pagePin" size={12} />From Walkthru
+                        </button>
+                      ) : null}
+                      {projectRoleFor(mobileDrillProject) !== 'viewer' && onAddFromJobFile ? (
+                        <button type="button" className="btn" data-project-add-job onClick={() => onAddFromJobFile(mobileDrillProject)}>
+                          <Icon name="upload" size={12} />From a job file
+                        </button>
+                      ) : null}
+                      {projectRoleFor(mobileDrillProject) !== 'viewer' && onAddFromDrive ? (
+                        <button type="button" className="btn" data-project-add-onedrive onClick={() => onAddFromDrive(mobileDrillProject)}>
+                          <Icon name="oneDrive" size={12} />From OneDrive
+                        </button>
+                      ) : null}
+                      {onSendBackToPlot && isJobProject(mobileDrillProject?.id) ? (
+                        <button type="button" className="btn" data-project-send-plot onClick={() => onSendBackToPlot(mobileDrillProject)}>
+                          <Icon name="download" size={12} />Send back to Plot
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="projects-mobile-file-list">
                     {mobileDrillFiles.length === 0 ? (
                       <div className="projects-mobile-empty-card">

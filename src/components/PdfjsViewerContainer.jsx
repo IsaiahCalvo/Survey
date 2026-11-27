@@ -79,6 +79,7 @@ import { createPagePreviewSession, decodeKeptPreview } from '../utils/pagePrevie
 import { pageThumbWorkerSupported } from '../utils/pageThumbRenderer.js';
 import { destroyPdfDocument } from '../utils/destroyPdfDocument.js';
 import {
+  getDocumentMaximumScale,
   getWidthFitMinimumScale,
   getWheelZoomScale,
   normalizeWheelDelta,
@@ -300,6 +301,21 @@ function getMinimumScaleForLayout(dims, containerHeight, metrics, containerWidth
     pageWidths: dims.filter((dim) => !dim.hidden).map((dim) => dim.w),
     absoluteMinimumScale: MIN_SCALE,
     maximumScale: MAX_SCALE,
+  });
+}
+
+// Zoom-in ceiling (#1718): never exceed the platform ceiling (MAX_SCALE /
+// MOBILE_MAX_SCALE) OR Chromium's MAX_CANVAS_DIM rendered page dimension, so
+// large architectural drawings stop at a crisp, renderable detail view instead
+// of zooming into a blank white void at ~2800%-4000%.
+function getMaximumScaleForLayout(dims, isMobileSurface) {
+  const visible = (Array.isArray(dims) ? dims : []).filter((dim) => dim && !dim.hidden);
+  return getDocumentMaximumScale({
+    pageWidths: visible.map((dim) => dim.w),
+    pageHeights: visible.map((dim) => dim.h),
+    absoluteMaximumScale: isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE,
+    minimumScale: MIN_SCALE,
+    maxRenderedDimensionPx: MAX_CANVAS_DIM,
   });
 }
 
@@ -2188,7 +2204,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           maxPageWidth: metrics.maxPageWidth,
         }) : NaN;
         const fit = !hasViewport ? scaleRef.current : Number.isFinite(fitPageScale) && fitPageScale > 0
-          ? Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, Math.max(
+          ? Math.min(getMaximumScaleForLayout(sizes, isMobileSurface), Math.max(
             getMinimumScaleForLayout(spreadModeRef.current === 'single' ? sizes : [{ w: firstRowW }], el.clientHeight, metrics, cw),
             fitPageScale,
           ))
@@ -3120,7 +3136,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dims = dimsPtRef.current;
     if (!el || !gesture || !dims.length) return null;
     const oldScale = Number(gesture.originScale) || scaleRef.current;
-    const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+    const maxScale = getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface);
     const minimumScale = getMinimumScaleForLayout(
       stackPtRef.current,
       containerHRef.current,
@@ -3236,7 +3252,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dims = dimsPtRef.current;
     if (!el || !dims.length) return;
     const oldScale = scaleRef.current;
-    const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+    const maxScale = getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface);
     const minimumScale = getMinimumScaleForLayout(
       stackPtRef.current,
       containerHRef.current,
@@ -3650,7 +3666,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const glide = zoomGlideRef.current;
     // Reduced motion, or a pinch / trackpad zoom already live: the instant path.
     if (prefersReducedMotion() || (gestureRef.current && !glide)) return false;
-    const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+    const maxScale = getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface);
     const minimumScale = getMinimumScaleForLayout(
       stackPtRef.current,
       containerHRef.current,
@@ -3814,7 +3830,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         setZoomInteraction(true);
       }
       const committed = scaleRef.current;
-      const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+      const maxScale = getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface);
       const minimumScale = getMinimumScaleForLayout(
         stackPtRef.current,
         containerHRef.current,
@@ -5106,7 +5122,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const rect = el.getBoundingClientRect();
         const center = getTouchCenter(touches, rect);
         const committedScale = scaleRef.current;
-        const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+        const maxScale = getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface);
         const distance = Math.max(1, getTouchDistance(touches));
         const minimumScale = getMinimumScaleForLayout(
           stackPtRef.current,
@@ -5889,7 +5905,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const fill = Number(options.fill) > 0 ? Number(options.fill) : 0.4;
     const wanted = Math.min((bandW * fill) / w, (bandH * fill) / h);
     const ceiling = Math.min(
-      isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE,
+      getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface),
       Number(options.maxScale) > 0
         ? Number(options.maxScale)
         : fitScale * (Number(options.maxFitMultiple) > 0 ? Number(options.maxFitMultiple) : 4),
@@ -5934,7 +5950,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       && !gestureRef.current
       && !pendingAnchorRef.current;
     if (canFly) {
-      const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+      const maxScale = getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface);
       const minimumScale = getMinimumScaleForLayout(
         stackPtRef.current,
         containerHRef.current,
@@ -6486,6 +6502,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         layoutMetricsRef.current,
         floorWidth(containerWRef.current),
       ),
+      getMaximumScale: () => getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface),
       get pageCount() { return numPagesRef.current || 0; },
       get currentPageNumber() { return currentPageRef.current || 1; },
       get zoomValue() { return Math.round((scaleRef.current || 1) * 100); },
@@ -6783,7 +6800,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       getMinimumScale: () => getMinimumScaleForLayout(
         stackPtRef.current, containerHRef.current, layoutMetricsRef.current, floorWidth(containerWRef.current),
       ),
-      getMaximumScale: () => (isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE),
+      getMaximumScale: () => getMaximumScaleForLayout(dimsPtRef.current, isMobileSurface),
       rasterQueue: () => rasterQueueRef.current,
       getPdf: () => pdfRef.current,
       rasterCacheBytes: () => pageRasterCacheBytes,

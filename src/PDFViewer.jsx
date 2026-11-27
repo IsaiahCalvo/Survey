@@ -4394,6 +4394,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // declared further down; read only when a menu opens).
   const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu({
     getPageObjects: (pageNumber) => annotationsByPageRef.current?.[pageNumber]?.objects || null,
+    isActive,
   });
   const selectedNativeTextMarkupRef = useRef(null);
   // UX: pan-mode quick-click selection command. Set by the document-level
@@ -4501,6 +4502,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // handler's stopPropagation cannot starve this path either. Pan-drag is
   // unaffected: moves > QUICK_CLICK_PX bail out here and pan normally.
   useEffect(() => {
+    if (isActive === false) return undefined;
     // 4px tolerance matches trackpad + mouse in local testing. Tune here if
     // users report accidental drags. Too low → hair-trigger drags fire as
     // clicks; too high → actual pan gestures get treated as selection taps.
@@ -4591,6 +4593,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         panQuickClickAutoSelectAtRef.current = Date.now();
         // w41: the callout REPLACES any mark still picked, or the two would
         // form a restyle group the user never made (review 2026-09-25).
+        const clickedCallout = (calloutsRef.current || []).find((c) => c && c.id === hit.calloutId) || null;
+        const calloutGid = getCalloutGroupId(clickedCallout);
+        if (calloutGid && hit.pageNumber != null) {
+          const pageObj = annotationsByPageRef.current?.[hit.pageNumber];
+          const pageCallouts = (calloutsRef.current || []).filter((c) => c && c.pageNumber === hit.pageNumber);
+          const members = findGroupMembers(pageObj, pageCallouts, [calloutGid]);
+          if (members.annotationIndices.length > 0) {
+            setPendingSvgSelection({ pageNumber: hit.pageNumber, annotationIndices: members.annotationIndices, tick: Date.now() });
+          } else if (!e.shiftKey) {
+            setAnnotationSelectionClearToken((token) => token + 1);
+          }
+          setSelectedCalloutIds((previous) => {
+            const next = new Set(e.shiftKey && previous ? previous : []);
+            (members.calloutIds.length > 0 ? members.calloutIds : [hit.calloutId]).forEach((cid) => next.add(cid));
+            return next;
+          });
+          return;
+        }
         if (!e.shiftKey) setAnnotationSelectionClearToken((token) => token + 1);
         setSelectedCalloutIds((previous) => {
           const next = new Set(e.shiftKey && previous ? previous : []);
@@ -4630,7 +4650,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange, resolveCalloutPageNumber]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, isActive, resolveCalloutPageNumber]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
   // UX 2026-10-02 (owner): which tools listen comes from the selection
@@ -8849,6 +8869,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [surveyMarkers, showSurveyPanel, selectedModuleId]);
   const printableSurveyMarkersRef = useRef(printableSurveyMarkers);
   printableSurveyMarkersRef.current = printableSurveyMarkers;
+  // Tester #1745: when the Survey panel is open, export carries that module's
+  // markers (same set the screen shows). When the user exports from a drawing
+  // with the Survey panel closed, still include the drawing's saved Survey
+  // markers instead of writing an empty surveyMarkers map.
+  const exportableSurveyMarkers = useMemo(() => {
+    if (isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })) {
+      return printableSurveyMarkers;
+    }
+    const result = {};
+    Object.entries(surveyMarkers || {}).forEach(([annotationId, marker]) => {
+      if (!marker?.pageNumber || !marker?.bounds) return;
+      const entry = surveyMarkerRenderEntry(annotationId, marker, normalizeSurveyMarkerColor);
+      result[annotationId] = {
+        ...marker,
+        annotationId,
+        color: entry ? (entry.color || null) : (marker?.color || null),
+        needsEntity: entry ? entry.needsEntity === true : marker?.needsEntity === true,
+      };
+    });
+    return result;
+  }, [printableSurveyMarkers, surveyMarkers, showSurveyPanel, selectedModuleId]);
+  const exportActiveModuleId = isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
+    ? selectedModuleId
+    : (Object.keys(exportableSurveyMarkers).length > 0 ? '*' : null);
   // Same rule for page objects: the screen decides per object with
   // isAnnotationVisibleInSurveyMode (regular markup hidden inside a template,
   // other modules' markers hidden, region-scoped marks untouched). Print gets
@@ -17288,14 +17332,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // edits are out of sight and any tampering is detected on import (malformed →
       // review). That protects identity without breaking the user's sort/filter.
 
+      const { addSummarySheet, surveyExportBaseName } = await import('./services/excelSummarySheet.js');
+      const exportBaseName = surveyExportBaseName({
+        projectName: markLibraryStore.getState().access.projectName || pdfFile?.projectName || '',
+        documentName: pdfDisplayName,
+        templateName: selectedTemplate?.name,
+      });
+
       // Survey agent testers: a Summary sheet on a new export, not on a sync to
       // a linked workbook (Live Sync writes that one's existing sheets cell by cell).
       if (!targetPath) {
-        const [{ isSurveyAgentEnabled }, { addSummarySheet }] = await Promise.all([
-          import('./agent/surveyAgentFlag.js'),
-          import('./services/excelSummarySheet.js'),
-        ]);
-        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers });
+        const { isSurveyAgentEnabled } = await import('./agent/surveyAgentFlag.js');
+        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers, title: exportBaseName });
       }
 
       (await import('./services/excelOpeningSheet.js')).openOnFirstVisibleSheet(workbook);
@@ -17465,7 +17513,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           }
         } else {
           // Export - show location choice modal
-          const fileName = sanitizeFilename(selectedTemplate?.name || 'survey', 'survey');
+          const fileName = sanitizeFilename(exportBaseName, 'survey');
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
@@ -17484,7 +17532,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${sanitizeFilename(selectedTemplate?.name || 'survey', 'survey')}_export.xlsx`;
+        link.download = `${sanitizeFilename(exportBaseName, 'survey')}_export.xlsx`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -17503,7 +17551,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       showToast('Unable to create the Excel file. Please try again.', 'error');
     }
-  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate]);
+  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate, pdfDisplayName, pdfFile]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -22517,6 +22565,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // device-files (Nightly): a PDF opened with no account keeps its marks in
   // the store's device copy under one device actor.
   const annotationActorId = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : (user?.id || null);
+  const previewLayersHandlerRef = useRef(null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22583,6 +22632,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // w33: no one-time store compaction write while the document is locked.
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
+    onPreviewLayers: (value) => previewLayersHandlerRef.current?.(value),
   });
   const offlineCopyToastRef = useRef(null);
   useEffect(() => {
@@ -23022,6 +23072,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [surveyModeToolsOn] = useState(() => isFeatureOn('survey-mode-tools'));
   const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
   const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
+  const prevLayerDocIdRef = useRef(pdfFile?.id);
+  previewLayersHandlerRef.current = (value) => {
+    if (layersEnabled) setLayerState(normalizeLayerState(value));
+  };
+  useEffect(() => {
+    if (prevLayerDocIdRef.current === pdfFile?.id) return;
+    prevLayerDocIdRef.current = pdfFile?.id;
+    setLayerState(DEFAULT_LAYER_STATE);
+    setActiveLayerId(DEFAULT_LAYER_ID);
+  }, [pdfFile?.id]);
   useEffect(() => {
     if (!layersEnabled || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     const apply = (value) => setLayerState(normalizeLayerState(value));
@@ -25115,8 +25175,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
           // Owner ruling 2026-09-02: export = regular markup + the open
           // module's Survey Markers (same set and paint the screen shows).
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           onRedactionsSanitized: (count) => { redactionsSanitizedForExport = count; },
@@ -25207,7 +25267,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25222,14 +25283,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and how many comments the document has, for "Comments (.csv)".
   const [exportFiltersEnabled] = useState(() => isFeatureOn('export-filters'));
   const exportPageInfo = useCallback(async () => {
-    const { pagesWithMarks } = await import('./utils/exportPdfModes.js');
+    const [{ pagesWithMarks }, { buildExportableSurveyMarkers }] = await Promise.all([
+      import('./utils/exportPdfModes.js'),
+      import('./utils/exportFlattenedMarks.js'),
+    ]);
     const shown = withoutHiddenLayers(annotationsByPage, hiddenLayerIds);
+    const exportSurveyMarkers = buildExportableSurveyMarkers(surveyMarkers, {
+      normalizeColor: normalizeSurveyMarkerColor,
+    });
     const info = {
       numPages: Number(numPages) || 0,
       currentPage: pageNum,
       marked: pagesWithMarks({
         annotationsByPage: shown,
-        surveyMarkers: printableSurveyMarkers,
+        surveyMarkers: exportSurveyMarkers,
       }),
     };
     if (!exportFiltersEnabled) return info;
@@ -25251,12 +25318,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     };
     return {
       ...info,
-      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: printableSurveyMarkers })
+      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: exportSurveyMarkers })
         .map((a) => ({ ...a, name: nameOf(a.id) })),
       layers: layersEnabled ? filters.exportLayers({ annotationsByPage: shown }, layerState) : [],
       commentCount: comments.filter((c) => !c.deletedAt).length,
     };
-  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, surveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
 
   // Comments (.csv) beside the exported PDF (export filters).
   const exportCommentsCsv = useCallback(async () => {
@@ -25301,19 +25368,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (mode === 'plain') {
         bytes = await bytesKit.stripMarkupAnnotations(source, { pageTransformations });
       } else if (mode === 'flattened') {
-        const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
-          await import('./utils/pdfAnnotationsPdfLib');
+        const [{ buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint }, { buildFlattenedExportMarks }] =
+          await Promise.all([
+            import('./utils/pdfAnnotationsPdfLib'),
+            import('./utils/exportFlattenedMarks.js'),
+          ]);
+        // #1769: Flattened PDF burns in every checked layer's marks (both drawn
+        // marks/callouts and Survey markers) regardless of active Survey mode.
         const payload = buildPrintableRegularAnnotationPayload({
-          ...keep({
-            annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
-            callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
-              moduleId: callout?.moduleId ?? null,
-              regionId: callout?.regionId ?? null,
-              showSurveyPanel,
-              selectedModuleId,
-            })),
-            surveyMarkers: printableSurveyMarkers,
-          }),
+          ...keep(buildFlattenedExportMarks({
+            annotationsByPage,
+            callouts,
+            surveyMarkers,
+            hiddenLayerIds,
+            normalizeSurveyMarkerColor,
+          })),
           spaces,
         });
         bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(source, payload.annotationsByPage, pageSizes, {
@@ -25333,7 +25402,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const marks = keep({
           annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
+          surveyMarkers: exportableSurveyMarkers,
         });
         bytes = await savePDFWithAnnotationsPdfLib(
           source,
@@ -25348,7 +25417,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             pageTransformations,
             callouts: marks.callouts,
             surveyMarkers: marks.surveyMarkers,
-            activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+            activeModuleId: exportActiveModuleId,
             spaces,
             deletedPdfAnnotations,
             onRedactionsSanitized: (count) => { redactionsSanitized = count; },
@@ -25400,7 +25469,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pageTransformations,
     pdfFile,
-    printableSurveyMarkers,
+    surveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     selectedModuleId,
     showSurveyPanel,
     spaces,
@@ -25423,8 +25494,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25446,7 +25517,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25473,8 +25545,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25496,7 +25568,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -27494,6 +27567,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       },
       getCurrentScale: () => scaleRef.current,
       getMinimumScale: () => pdfjsViewerRef.current?.getMinimumScale?.() || 0.01,
+      getMaximumScale: () => pdfjsViewerRef.current?.getMaximumScale?.() || 40,
       setScale: (value, context = {}) => setScaleWithViewportPreservation(value, {
         ...context,
         mode: context?.mode || ZOOM_MODES.MANUAL,
@@ -28746,11 +28820,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
-      // Keys belong to an open modal (shortcut sheet, any dialog card): no
-      // tool letters, zoom or Delete acting on the page behind it.
-      // Only a modal that holds focus counts: one still fading out (or
-      // mounted but idle) must not swallow the next tool key.
-      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement) || d.contains(e.target))) return;
+      // Keys belong to an open modal (shortcut sheet, New note, any dialog card):
+      // no tool letters, zoom or Delete acting on the page behind it (#1730).
+      // Only a closing / hidden / inert exit copy is ignored.
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')].some((d) => (
+        !d.closest('[data-motion-state="closing"], [aria-hidden="true"], [inert]')
+        && (d.contains(document.activeElement) || d.contains(e.target) || d.offsetWidth > 0 || d.offsetHeight > 0 || d.getClientRects().length > 0)
+      ))) return;
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =
@@ -41056,6 +41132,7 @@ ${pageBlocks}
                                   pickOwnerPageNumber={selectedToolbarIndices?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
                                   onTextSelectManipulationChange={handleTextSelectManipulationChange}
+                                  textDragModeActive={textDragToolsOn && Boolean(textHighlightMode)}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
                                   // Phase 35 Plan 03 — per-user delete authority. viewerId

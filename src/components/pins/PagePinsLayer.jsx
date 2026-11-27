@@ -34,6 +34,11 @@ const DRAG_SLOP = 4;
 // erases instead of moving the pin (#1657).
 const PIN_PRESS_TOOLS = new Set(['select', 'pan', 'text-select', PIN_TOOL_ID]);
 export const pinTakesPress = (activeTool) => !activeTool || PIN_PRESS_TOOLS.has(activeTool);
+// While a drawing or marking tool is armed, pins drop under the SVG annotation
+// layer (zIndex 100) so freehand strokes draw visually unbroken across a pin
+// without a 26 px opaque gap (#1727). Tools that click or drag pins keep pins
+// on top (zIndex 110) so they stay reachable over filled shapes.
+export const pinLayerZIndex = (activeTool) => (pinTakesPress(activeTool) ? 110 : 95);
 
 export function PinFace({ kind, status, authorId, people, size = PIN_FACE }) {
   if (kind === 'issue' || kind === 'task') {
@@ -100,9 +105,9 @@ function Pin({ pin, anchor, people, open, faded, pageWidth, pageHeight, canMove,
       data-pin-status={pin.status || undefined}
       aria-label={pinLabel(pin)}
       aria-expanded={open}
-      onPointerDown={onPress}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onPointerDown={passThrough ? undefined : onPress}
+      onMouseDown={passThrough ? undefined : (e) => e.stopPropagation()}
+      onClick={passThrough ? undefined : (e) => e.stopPropagation()}
       style={{
         position: 'absolute',
         left: place.left,
@@ -238,7 +243,7 @@ export default function PagePinsLayer({ documentId, pageNumber, pageWidth, pageH
         cursor: armed ? 'crosshair' : undefined,
         // Let a finger still scroll and pinch the page while the tool is on.
         touchAction: armed ? 'pan-x pan-y pinch-zoom' : undefined,
-        zIndex: 110,
+        zIndex: pinLayerZIndex(activeTool),
       }}
     >
       {pagePins.map((pin) => (
@@ -266,6 +271,7 @@ export default function PagePinsLayer({ documentId, pageNumber, pageWidth, pageH
           pageWidth={pageWidth}
           pageHeight={pageHeight}
           canMove={false}
+          passThrough={passThrough}
           onPress={pressPin({ id: null })}
         />
       )}

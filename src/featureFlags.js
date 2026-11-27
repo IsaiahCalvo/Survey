@@ -27,6 +27,8 @@
 // the next reload. To add a flag: add it here and insert its row in a
 // migration (see supabase/migrations/20261021030000_feature_flags.sql).
 
+import { createBackoffState } from './utils/pollingBackoff.js';
+
 export const FEATURE_FLAGS = Object.freeze({
   // 2026-11-09 (owner: "get this onto production"): counter-list,
   // grid-settings, spline-polyline, export-modes, pinned-tools, layers,
@@ -828,28 +830,71 @@ export function waitForFirstFlags(firstAnswer, { storage = safeStorage(), maxMs 
   ]).then(() => {});
 }
 
+const flagRefreshStateByClient = new WeakMap();
+const FLAG_ERROR_BACKOFF_BASE_MS = 15_000;
+const FLAG_ERROR_BACKOFF_MAX_MS = 120_000;
+
+function getFlagRefreshState(supabase, now) {
+  let state = flagRefreshStateByClient.get(supabase);
+  if (!state) {
+    state = {
+      inFlight: null,
+      backoff: createBackoffState({
+        baseMs: FLAG_ERROR_BACKOFF_BASE_MS,
+        maxMs: FLAG_ERROR_BACKOFF_MAX_MS,
+        now,
+      }),
+    };
+    flagRefreshStateByClient.set(supabase, state);
+  }
+  return state;
+}
+
 // Ask the server which flags are on for whoever is signed in (or nobody) and
 // save the answer for the next load. Returns true when the answer changed.
-export async function refreshFeatureFlags(supabase, { storage = safeStorage() } = {}) {
+export async function refreshFeatureFlags(supabase, {
+  storage = safeStorage(),
+  force = false,
+  now = () => Date.now(),
+} = {}) {
   if (!supabase?.rpc) return false;
-  const { data, error } = await supabase.rpc('get_my_feature_flags');
-  if (error || !data || typeof data !== 'object') return false;
-  const next = {};
-  for (const key of Object.keys(FEATURE_FLAGS)) next[key] = data[key] === true;
-  const before = JSON.stringify(readCache(storage) || {});
-  const after = JSON.stringify(next);
-  if (before === after) return false;
-  try {
-    storage?.setItem(FLAG_CACHE_KEY, after);
-  } catch {
-    return false;
-  }
-  try {
-    globalThis.dispatchEvent?.(new CustomEvent(FLAGS_CHANGED_EVENT, { detail: next }));
-  } catch {
-    // No DOM events here (tests, workers).
-  }
-  return true;
+  const state = getFlagRefreshState(supabase, now);
+  if (state.inFlight) return state.inFlight;
+  if (!force && state.backoff.isBlocked()) return false;
+  if (force) state.backoff.reset();
+  const run = (async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_my_feature_flags');
+      if (error || !data || typeof data !== 'object') {
+        state.backoff.recordFailure();
+        return false;
+      }
+      state.backoff.recordSuccess();
+      const next = {};
+      for (const key of Object.keys(FEATURE_FLAGS)) next[key] = data[key] === true;
+      const before = JSON.stringify(readCache(storage) || {});
+      const after = JSON.stringify(next);
+      if (before === after) return false;
+      try {
+        storage?.setItem(FLAG_CACHE_KEY, after);
+      } catch {
+        return false;
+      }
+      try {
+        globalThis.dispatchEvent?.(new CustomEvent(FLAGS_CHANGED_EVENT, { detail: next }));
+      } catch {
+        // No DOM events here (tests, workers).
+      }
+      return true;
+    } catch {
+      state.backoff.recordFailure();
+      return false;
+    } finally {
+      if (state.inFlight === run) state.inFlight = null;
+    }
+  })();
+  state.inFlight = run;
+  return run;
 }
 
 export function normalizeTesterEmails(text) {

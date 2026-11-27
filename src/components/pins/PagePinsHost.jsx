@@ -719,6 +719,7 @@ export default function PagePinsHost({
                 if (next) setPagePinsState((s) => (s.openId === pinId ? { openId: null } : null));
                 if (!quiet) {
                   showToast(next ? 'Comment resolved' : 'Comment reopened', 'success', {
+                    duration: 6000,
                     action: { label: 'Undo', onClick: () => { run(!next, true); } },
                   });
                 }

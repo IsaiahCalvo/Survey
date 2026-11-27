@@ -2522,6 +2522,8 @@ const BookmarksPanel = ({
                 New folder
               </h3>
               <button
+                type="button"
+                aria-label="Close"
                 onClick={() => {
                   setShowBookmarkGroupModal(false);
                   setGroupName('');
@@ -2924,6 +2926,8 @@ const BookmarksPanel = ({
                 Add bookmarks to group
               </h3>
               <button
+                type="button"
+                aria-label="Close"
                 onClick={() => {
                   setShowAddToGroupModal(false);
                   setTargetGroupId(null);

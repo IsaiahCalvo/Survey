@@ -83,7 +83,7 @@ import { FLIP_MENU_ROWS, canFlipMark } from '../utils/flipMarks.js';
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
 // exactly those if another screen changes the list while it is open.
-export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
+export function useAnnotationContextMenu({ getPageObjects = null, isActive = true } = {}) {
   const getPageObjectsRef = useRef(getPageObjects);
   getPageObjectsRef.current = getPageObjects;
   // UX: annotation right-click menu — anchored to the pointer.
@@ -107,11 +107,12 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   // (Nightly 'back-button'; it has no focus trap, so it registers itself).
   useBackLayer(Boolean(annotationContextMenu), closeAnnotationContextMenu);
 
-  // Register the global annotation right-click handler. contextMenuDiagnostics.js
-  // resolves (pageNumber, annotationIndex) from the click target and invokes this
-  // — one listener, always on, covers every page without needing PAL to be mounted.
+  // Register the global annotation right-click handler for the active tab only.
+  // Every open document tab keeps its PDFViewer mounted (tabBehind.js), so a
+  // background tab must never overwrite or delete the front tab's handler (#1661).
   useEffect(() => {
-    window.__onAnnotationContextMenu = (target) => {
+    if (isActive === false) return undefined;
+    const handler = (target) => {
       // Hidden marks (Nightly 'hide-marks') are not there to right-click:
       // the press opens the page's menu instead.
       const hidden = marksHidden() && target?.kind && target.kind !== 'page';
@@ -164,10 +165,11 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
         input: contextMenuInputOf(event),
       }, pageObjects));
     };
+    window.__onAnnotationContextMenu = handler;
     return () => {
-      if (window.__onAnnotationContextMenu) delete window.__onAnnotationContextMenu;
+      if (window.__onAnnotationContextMenu === handler) delete window.__onAnnotationContextMenu;
     };
-  }, []);
+  }, [isActive]);
 
   // Dismiss the annotation context menu on outside click or Escape.
   // UX: capture phase + data-annotation-context-menu marker check. Capture

@@ -2161,15 +2161,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const { manifest, library, zip } = await open(file);
     return { ...jobToWalk(manifest, library), download: jobFileDownload(zip) };
   };
-  const sendJobFile = async ({ walk, template, moduleId, categoryFor }) => {
+  const sendJobFile = async ({ walk, template, moduleId, categoryFor, links = [] }) => {
     const project = jobTargetProject;
     if (!project?.id || !user?.id) throw new Error('Sign in and pick a Project first.');
-    const [{ sendWalkToProject, readPdfPageSizes }, { readJobOutlines }, { openAnnotationDoc }, { linkDocumentTemplates }, { loadPdfjs }] = await Promise.all([
+    const [{ sendWalkToProject, readPdfPageSizes }, { readJobOutlines }, { openAnnotationDoc }, { linkDocumentTemplates }, { loadPdfjs }, { saveJobCategoryLinks }] = await Promise.all([
       import('./suite/walkthruHandoffRun.js'),
       import('./suite/jobOutlines.js'),
       import('./services/annotationDocSync.js'),
       import('./services/sharedTemplates.js'),
       import('./utils/pdfWorkerConfig.js'),
+      import('./suite/categoryLinks.js'),
     ]);
     const templateRowId = resolveSupabaseTemplateId(template);
     const result = await sendWalkToProject({
@@ -2198,9 +2199,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         ? (documentId) => linkDocumentTemplates({ client: supabase, documentId, userId: user.id, templateRowIds: [templateRowId] })
         : null,
     });
+    const linkOutcome = links.length > 0
+      ? saveJobCategoryLinks(template?.id, moduleId, links)
+      : null;
     refetchDocuments?.();
     rememberJobProject(project.id);
-    return { ...result, source: walk.source || null };
+    return {
+      ...result,
+      source: walk.source || null,
+      ...(linkOutcome ? { links: linkOutcome } : {}),
+    };
   };
   // KAL-758 (Nightly 'suite'): send a Project that came from a Plot job back
   // as a .kvjob, so Plot shows what the field changed as suggestions. The

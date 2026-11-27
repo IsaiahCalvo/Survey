@@ -296,6 +296,11 @@
 }
 
 .account-form-group input::placeholder {
+  color: var(--text-3);
+  opacity: 1;
+}
+
+.account-form-group input:disabled::placeholder {
   color: var(--text-disabled);
 }
 

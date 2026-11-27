@@ -88,18 +88,37 @@ export function pageToPoint(xPct, yPct, page) {
 }
 
 /**
- * How each Walkthru Category maps onto the chosen Module.
+ * Singularized lowercase form for Plot plural block names (e.g. Cameras -> camera,
+ * Doors -> door, Intercoms -> intercom, Batteries -> battery, Boxes -> box).
+ */
+export function singularizeCategoryName(value) {
+  const cleaned = clean(value);
+  if (!cleaned) return '';
+  const lower = cleaned.toLowerCase();
+  if (lower.length > 4 && lower.endsWith('ies')) return `${lower.slice(0, -3)}y`;
+  if (lower.length > 4 && /(ch|sh|x|s|z)es$/.test(lower)) return lower.slice(0, -2);
+  if (lower.length > 2 && lower.endsWith('s') && !/(ss|us|is)$/.test(lower)) return lower.slice(0, -1);
+  return lower;
+}
+
+/**
+ * How each Walkthru or job-file Category maps onto the chosen Module.
  * @param {Array<{id:string,name:string,library_entry_id?:string|null}>} nodeTypes
  *   only the Categories the walk's nodes use
+ * @param {object} [options]
+ * @param {boolean} [options.allowPlural]  match unambiguous singular/plural names (Plot .kvjob, #1617)
+ * @param {Record<string,string>|null} [options.savedLinks]  remembered name/id -> categoryId links (#1603)
  * @returns {{
  *   linked: Record<string,string>,
  *   nameMatches: Array<{nodeTypeId:string,categoryId:string,name:string}>,
  *   missing: Array<{nodeTypeId:string,name:string}>
- * }} linked = by library id (ready); nameMatches = same exact name, waiting
- *   for the user to confirm; missing = not in this Module.
+ * }} linked = by library id or remembered job link (ready); nameMatches = same
+ *   name (or unambiguous plural when allowPlural is on), waiting to confirm;
+ *   missing = not in this Module.
  */
-export function matchCategories(nodeTypes, template, moduleId) {
+export function matchCategories(nodeTypes, template, moduleId, { allowPlural = false, savedLinks = null } = {}) {
   const categories = categoriesOf(moduleOf(template, moduleId));
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
   const linked = {};
   const nameMatches = [];
   const missing = [];
@@ -112,9 +131,29 @@ export function matchCategories(nodeTypes, template, moduleId) {
       continue;
     }
     const name = clean(type.name) || '';
+    const savedCategoryId = savedLinks
+      ? (savedLinks[name.toLowerCase()] || savedLinks[type.id] || null)
+      : null;
+    if (savedCategoryId && categoryById.has(savedCategoryId)) {
+      linked[type.id] = savedCategoryId;
+      continue;
+    }
     const byName = name ? categories.find((c) => clean(c.name) === name) : null;
-    if (byName) nameMatches.push({ nodeTypeId: type.id, categoryId: byName.id, name });
-    else missing.push({ nodeTypeId: type.id, name });
+    if (byName) {
+      nameMatches.push({ nodeTypeId: type.id, categoryId: byName.id, name });
+      continue;
+    }
+    if (allowPlural && name) {
+      const targetSingular = singularizeCategoryName(name);
+      const pluralMatches = targetSingular
+        ? categories.filter((c) => singularizeCategoryName(c.name) === targetSingular)
+        : [];
+      if (pluralMatches.length === 1) {
+        nameMatches.push({ nodeTypeId: type.id, categoryId: pluralMatches[0].id, name });
+        continue;
+      }
+    }
+    missing.push({ nodeTypeId: type.id, name });
   }
   return { linked, nameMatches, missing };
 }
@@ -264,7 +303,14 @@ export function buildWalkMarkers(input) {
     const page = pageNumber ? pageSize?.(pageNumber) : null;
     const point = page ? pageToPoint(node.x_pct, node.y_pct, page) : null;
     const outline = point && outlineFor ? outlineFor(node) : null;
-    const bounds = point ? ((outline && buildPolygonMarkerBounds(outline)) || buildDotMarkerBounds(point)) : null;
+    const shortSide = page ? Math.min(Number(page.width) || 0, Number(page.height) || 0) : 0;
+    const dotWidth = shortSide > 800
+      ? Math.max(12, Math.min(48, Math.round(shortSide * 0.025)))
+      : undefined;
+    const bounds = point
+      ? ((outline && buildPolygonMarkerBounds(outline))
+        || buildDotMarkerBounds(point, dotWidth ? { width: dotWidth } : undefined))
+      : null;
 
     const fromWalk = {
       name: clean(node.title) || category.name || '',

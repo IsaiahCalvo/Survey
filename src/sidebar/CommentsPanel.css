@@ -440,12 +440,12 @@
 .mobile-pdf-sheet .comments-item__author { font: var(--sheet-row-title-strong); }
 .mobile-pdf-sheet .comments-item__time { font: var(--sheet-row-meta); }
 .mobile-pdf-sheet .comments-icon { width: 44px; height: 44px; }
-.mobile-pdf-sheet .comments-item__body { font: var(--sheet-row-text); }
+.mobile-pdf-sheet .comments-item__body { font: var(--sheet-row-text); padding: 6px 0 8px; }
 .mobile-pdf-sheet .comments-avatar { width: 24px; height: 24px; font-size: 10px; }
 .mobile-pdf-sheet .comments-item__body,
 .mobile-pdf-sheet .comments-item .comments-box--inline,
 .mobile-pdf-sheet .comments-reply > .comments-box { margin-left: 30px; }
 .mobile-pdf-sheet .comments-reply-btn { margin-left: 24px; }
-.mobile-pdf-sheet .comments-thread__actions { margin-left: 24px; }
+.mobile-pdf-sheet .comments-thread__actions { margin-left: 24px; margin-top: 8px; gap: 12px; }
 .mobile-pdf-sheet .comments-thread__actions .comments-reply-btn { margin-left: 0; }
 .mobile-pdf-sheet .comments-box textarea { font-size: 16px; }

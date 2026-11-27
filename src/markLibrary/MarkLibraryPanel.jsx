@@ -127,38 +127,40 @@ function LibraryTile({
   const name = item.name;
   const body = (
     <div
-      role="button"
-      tabIndex={0}
       className={`mark-library__tile mark-library__tile--${layout}${armed ? ' is-armed' : ''}${selected ? ' is-selected' : ''}`}
       data-mark-library-item={item.id}
-      aria-pressed={selectMode ? selected : armed}
-      aria-label={`${name}${kinds ? ` (${kinds})` : ''}`}
-      {...(layout === 'small' ? tip(name, 'below') : {})}
-      onPointerDown={handlePointerDown}
-      onPointerCancel={() => { press.current = null; }}
-      onClick={handleClick}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleClick(event); }
-      }}
       onContextMenu={(event) => { event.preventDefault(); onMenu(item, { x: event.clientX, y: event.clientY }); }}
     >
-      <Thumb item={item} px={layout === 'large' ? 160 : 80} />
-      {layout !== 'small' && (
-        <span className="mark-library__meta">
-          <span className="mark-library__name">{name}</span>
-          {layout === 'list' && (
-            <span className="mark-library__sub">
-              {[kinds, ...(item.tags || [])].filter(Boolean).join(' · ')}
-            </span>
-          )}
-        </span>
-      )}
-      {!item.builtIn && payloadHasTokens(item.payload) && <span className="mark-library__badge" {...tip('Fills in {{tokens}} when placed', 'below')}>{'{ }'}</span>}
-      {selectMode ? (
-        <span className={`mark-library__check${selected ? ' is-on' : ''}`} aria-hidden="true">
-          {selected ? <Icon name="check" size={12} color="currentColor" /> : null}
-        </span>
-      ) : (
+      <button
+        type="button"
+        className="mark-library__trigger"
+        data-keyboard-control=""
+        aria-pressed={selectMode ? selected : armed}
+        aria-label={`${name}${kinds ? ` (${kinds})` : ''}`}
+        {...(layout === 'small' ? tip(name, 'below') : {})}
+        onPointerDown={handlePointerDown}
+        onPointerCancel={() => { press.current = null; }}
+        onClick={handleClick}
+      >
+        <Thumb item={item} px={layout === 'large' ? 160 : 80} />
+        {layout !== 'small' && (
+          <span className="mark-library__meta">
+            <span className="mark-library__name">{name}</span>
+            {layout === 'list' && (
+              <span className="mark-library__sub">
+                {[kinds, ...(item.tags || [])].filter(Boolean).join(' · ')}
+              </span>
+            )}
+          </span>
+        )}
+        {!item.builtIn && payloadHasTokens(item.payload) && <span className="mark-library__badge" {...tip('Fills in {{tokens}} when placed', 'below')}>{'{ }'}</span>}
+        {selectMode && (
+          <span className={`mark-library__check${selected ? ' is-on' : ''}`} aria-hidden="true">
+            {selected ? <Icon name="check" size={12} color="currentColor" /> : null}
+          </span>
+        )}
+      </button>
+      {!selectMode && (
         <button
           type="button"
           className="mark-library__more"
