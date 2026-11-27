@@ -1,8 +1,8 @@
 // Mark library store (src/markLibrary/markLibraryStore.js): the signed-out
 // library lives in this browser; signed in it reads and writes
 // mark_library_items, and moves / duplicates / deletes items the way the
-// panel expects. KAL-853: it reads only while something that shows the
-// library retains it, and holds no realtime channel.
+// panel expects. KAL-853: it reads, and follows realtime changes, only while
+// something that shows the library retains it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMarkLibraryStore, libraryErrorMessage, REFRESH_AFTER_MS } from '../src/markLibrary/markLibraryStore.js';
@@ -23,17 +23,6 @@ const payload = (left = 10) => ({
   extent: { left, top: 10, width: 20, height: 20 },
 });
 
-function fakeDocument() {
-  const listeners = new Set();
-  return {
-    visibilityState: 'visible',
-    listeners,
-    addEventListener(type, fn) { if (type === 'visibilitychange') listeners.add(fn); },
-    removeEventListener(type, fn) { listeners.delete(fn); },
-    show() { this.visibilityState = 'visible'; listeners.forEach((fn) => fn()); },
-  };
-}
-
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // A tiny stand-in for supabase-js: one table, eq/in filters, insert/update/
@@ -42,7 +31,7 @@ function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: fa
   const rows = [];
   const handlers = [];
   let seq = 0;
-  const counts = { reads: 0, channels: 0 };
+  const counts = { reads: 0, channels: 0, open: 0 };
   const query = (table) => {
     const filters = [];
     let op = 'select';
@@ -91,12 +80,13 @@ function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: fa
     },
     get reads() { return counts.reads; },
     get channels() { return counts.channels; },
+    get open() { return counts.open; },
     channel() {
       counts.channels += 1;
-      const ch = { on(_type, filter, fn) { handlers.push({ filter, fn }); return ch; }, subscribe() { return ch; } };
+      const ch = { on(_type, filter, fn) { handlers.push({ filter, fn }); return ch; }, subscribe() { counts.open += 1; return ch; } };
       return ch;
     },
-    removeChannel() {},
+    removeChannel() { counts.open -= 1; },
     fire(payload) { handlers.forEach(({ fn }) => fn(payload)); },
     handlers,
   };
@@ -140,16 +130,36 @@ test('signed in: loads both libraries, the project name and what the person may 
   assert.equal(state.access.projectName, 'Tower B');
   assert.deepEqual(store.addableLibraries(), ['personal', 'project']);
   assert.equal(store.canChange(state.project.items[0]), false, 'someone else\'s project item');
-  assert.equal(supabase.channels, 0, 'no realtime channel (KAL-853)');
+  const listens = supabase.handlers.map((h) => `${h.filter.event}:${h.filter.filter || '*'}`).sort();
+  // Adds and edits filtered to my items and the project's; deletes can't be
+  // filtered (realtime only sends the old id), so they come unfiltered.
+  assert.deepEqual(listens, [
+    'DELETE:*', 'INSERT:created_by=eq.me', 'INSERT:project_id=eq.p1', 'UPDATE:created_by=eq.me', 'UPDATE:project_id=eq.p1',
+  ]);
+});
+
+test('realtime: a teammate\'s new item arrives, a delete leaves', async () => {
+  const supabase = fakeSupabase();
+  const store = createMarkLibraryStore({ supabase, available: () => true });
+  store.setContext({ userId: 'me', projectId: 'p1' });
+  store.retain();
+  await tick(); await tick();
+  supabase.fire({ eventType: 'INSERT', new: { id: 'n1', library: 'project', project_id: 'p1', created_by: 'them', name: 'New', tags: [], payload: payload() } });
+  assert.deepEqual(store.getState().project.items.map((it) => it.id), ['n1']);
+  supabase.fire({ eventType: 'INSERT', new: { id: 'n2', library: 'project', project_id: 'p9', created_by: 'me', name: 'Elsewhere', tags: [], payload: payload() } });
+  assert.deepEqual(store.getState().project.items.map((it) => it.id), ['n1'], 'my item in another project stays out');
+  supabase.fire({ eventType: 'DELETE', old: { id: 'n1' } });
+  assert.equal(store.getState().project.items.length, 0);
 });
 
 test('KAL-853: opening a document reads nothing until the library is shown', async () => {
   const supabase = fakeSupabase();
   let clock = 1_000_000;
-  const store = createMarkLibraryStore({ supabase, available: () => true, now: () => clock, doc: null });
+  const store = createMarkLibraryStore({ supabase, available: () => true, now: () => clock });
   store.setContext({ userId: 'me', projectId: 'p1' });
   await tick(); await tick();
   assert.equal(supabase.reads, 0, 'no read on document open');
+  assert.equal(supabase.channels, 0, 'no channel on document open');
   assert.equal(store.getState().personal.status, 'idle');
   const release = store.retain();
   await tick(); await tick();
@@ -171,12 +181,11 @@ test('KAL-853: opening a document reads nothing until the library is shown', asy
   store.setContext({ userId: 'me', projectId: 'p2' });
   await tick();
   assert.equal(supabase.reads, 4);
-  assert.equal(supabase.channels, 0, 'never a realtime channel');
 });
 
 test('KAL-853: a document switch while the panel is open reads the new project', async () => {
   const supabase = fakeSupabase();
-  const store = createMarkLibraryStore({ supabase, available: () => true, doc: null });
+  const store = createMarkLibraryStore({ supabase, available: () => true });
   store.setContext({ userId: 'me', projectId: 'p1' });
   const release = store.retain();
   await tick(); await tick();
@@ -188,25 +197,31 @@ test('KAL-853: a document switch while the panel is open reads the new project',
   release();
 });
 
-test('KAL-853: coming back to the tab refreshes only while the panel is open', async () => {
+test('KAL-853: the live channel is open only while the library is shown', async () => {
   const supabase = fakeSupabase();
   let clock = 5_000_000;
-  const doc = fakeDocument();
-  const store = createMarkLibraryStore({ supabase, available: () => true, now: () => clock, doc });
+  const store = createMarkLibraryStore({ supabase, available: () => true, now: () => clock });
   store.setContext({ userId: 'me', projectId: 'p1' });
+  await tick();
+  assert.equal(supabase.channels, 0);
   const release = store.retain();
   await tick(); await tick();
-  const first = supabase.reads;
-  clock += REFRESH_AFTER_MS;
-  doc.show();
-  await tick(); await tick();
-  assert.equal(supabase.reads, first + 2, 'refreshed on return');
+  assert.equal(supabase.channels, 1, 'opened with the panel');
+  assert.equal(supabase.open, 1);
   release();
-  assert.equal(doc.listeners.size, 0, 'no listener once the panel closes');
-  clock += REFRESH_AFTER_MS;
-  doc.show();
+  assert.equal(supabase.open, 0, 'closed with the panel');
+  // Reopened soon: no new read, but live changes again.
+  clock += 10_000;
+  const again = store.retain();
   await tick();
-  assert.equal(supabase.reads, first + 2);
+  assert.equal(supabase.open, 1);
+  // A document switch while open closes the old channel and opens one for the new project.
+  store.setContext({ userId: 'me', projectId: null });
+  await tick(); await tick();
+  assert.equal(supabase.open, 1);
+  again();
+  assert.equal(supabase.open, 0);
+  store.dispose();
 });
 
 test('move to the project library copies there and removes the personal one; duplicate names a copy', async () => {

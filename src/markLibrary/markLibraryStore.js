@@ -9,12 +9,12 @@
  * and changes what, see the migration). Signed out (or the dev test-PDF
  * route): the personal library lives in this browser only.
  *
- * KAL-853 (database load): opening a document reads nothing. The library is
- * read only while something shows it (the Library panel, the Save to library
- * card) — those call useMarkLibrary(store, { active: true }), which retains
- * the store. There is no realtime channel: a teammate's change shows the next
- * time the panel opens (if the last read is older than REFRESH_AFTER_MS) or
- * when the tab comes back while the panel is open.
+ * KAL-853 (database load): opening a document reads nothing and opens no
+ * channel. The library is read only while something shows it (the Library
+ * panel, the Save to library card), which call useMarkLibrary(store,
+ * { active: true }) and so retain the store. While it is retained, a realtime
+ * channel brings a teammate's change in live; it closes when the last one
+ * lets go. A panel opened again within REFRESH_AFTER_MS shows what was read.
  *
  * Rules (names, tags, rows, who may change what) are markLibraryModel.js.
  */
@@ -31,6 +31,7 @@ import {
   LIBRARY_PAYLOAD_MAX_BYTES,
   summarizeLibraryKinds,
 } from './markLibraryModel.js';
+import { createVisibilityGatedSubscription } from '../utils/realtimePolicy.js';
 
 const LOCAL_KEY = 'survey:mark-library.v1';
 const RECENTS_KEY = 'survey:mark-library-recents.v1';
@@ -74,7 +75,6 @@ export function createMarkLibraryStore({
   supabase = defaultSupabase,
   available = () => isSupabaseAvailable(),
   now = () => Date.now(),
-  doc = typeof document !== 'undefined' ? document : null,
 } = {}) {
   let state = {
     userId: null,
@@ -92,7 +92,7 @@ export function createMarkLibraryStore({
   let demand = 0;
   let loadedAt = 0;
   let stale = true;
-  let detachVisibility = null;
+  let gatedSub = null;
 
   const emit = () => { for (const fn of listeners) fn(); };
   const set = (patch) => { state = { ...state, ...patch }; emit(); };
@@ -121,16 +121,48 @@ export function createMarkLibraryStore({
     writeJson(LOCAL_KEY, state.personal.items.map((it) => ({ ...it, library: 'personal' })));
   };
 
-  function attachVisibility() {
-    if (detachVisibility || !doc || typeof doc.addEventListener !== 'function') return;
-    const onVisible = () => {
-      if (doc.visibilityState === 'visible' && demand > 0 && online() && now() - loadedAt >= REFRESH_AFTER_MS) void load();
-    };
-    doc.addEventListener('visibilitychange', onVisible);
-    detachVisibility = () => doc.removeEventListener('visibilitychange', onVisible);
+  function unsubscribe() {
+    if (gatedSub) {
+      gatedSub.dispose();
+      gatedSub = null;
+    }
   }
-  function detachVisibilityListener() {
-    if (detachVisibility) { detachVisibility(); detachVisibility = null; }
+
+  function subscribe() {
+    unsubscribe();
+    if (!online() || typeof supabase.channel !== 'function') return;
+    const { userId, projectId } = state;
+    const canReadProject = Boolean(projectId && state.access.canRead);
+    const onChange = (payload) => {
+      if (payload.eventType === 'DELETE') {
+        if (payload.old?.id) dropIds([payload.old.id]);
+        return;
+      }
+      const item = libraryItemFromRow(payload.new);
+      if (item) putItem(item);
+    };
+    gatedSub = createVisibilityGatedSubscription({
+      subscribe: () => {
+        const table = { schema: 'public', table: 'mark_library_items' };
+        let ch = supabase.channel(`mark-library:${userId}:${projectId || 'none'}:${newId().slice(0, 8)}`);
+        const filters = [`created_by=eq.${userId}`];
+        if (canReadProject) filters.push(`project_id=eq.${projectId}`);
+        for (const filter of filters) {
+          ch = ch
+            .on('postgres_changes', { event: 'INSERT', ...table, filter }, onChange)
+            .on('postgres_changes', { event: 'UPDATE', ...table, filter }, onChange);
+        }
+        // Realtime can't filter deletes (the old row is only its id), so take
+        // them all; dropIds ignores ids this person doesn't hold.
+        const activeChannel = ch.on('postgres_changes', { event: 'DELETE', ...table }, onChange).subscribe();
+        return () => {
+          try { supabase.removeChannel(activeChannel); } catch { /* already gone */ }
+        };
+      },
+      onResume: () => {
+        if (online() && demand > 0) void load();
+      },
+    });
   }
 
   // The API hands back at most PAGE_ROWS rows a request (max_rows), and a
@@ -194,6 +226,8 @@ export function createMarkLibraryStore({
         project: projectId && access.canRead ? { status: 'ready', items: projectItems } : { status: 'none', items: [] },
       });
       loadedAt = now();
+      // Live changes only while something shows the library (KAL-853).
+      if (demand > 0 && !gatedSub) subscribe();
     } catch (error) {
       if (token !== loadToken) return;
       console.warn('[markLibrary] load failed', error?.message || error);
@@ -275,6 +309,7 @@ export function createMarkLibraryStore({
       stale = true;
       loadedAt = 0;
       loadToken += 1; // a read for the old context lands nowhere
+      unsubscribe(); // its filters name the old person and project
       emit();
       if (demand > 0) void load();
     },
@@ -285,18 +320,18 @@ export function createMarkLibraryStore({
      */
     retain() {
       demand += 1;
-      attachVisibility();
       if (stale || now() - loadedAt >= REFRESH_AFTER_MS) void load();
+      else if (!gatedSub) subscribe();
       let released = false;
       return () => {
         if (released) return;
         released = true;
         demand = Math.max(0, demand - 1);
-        if (demand === 0) detachVisibilityListener();
+        if (demand === 0) unsubscribe();
       };
     },
     refresh() { return load(); },
-    dispose() { detachVisibilityListener(); demand = 0; listeners.clear(); },
+    dispose() { unsubscribe(); demand = 0; listeners.clear(); },
 
     canChange(item) { return canChangeLibraryItem(item, accessFor()); },
     /** Libraries this person can add to here, in menu order. */
