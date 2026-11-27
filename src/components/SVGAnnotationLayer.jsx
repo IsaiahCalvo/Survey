@@ -3545,13 +3545,32 @@ const SVGAnnotationLayerBody = memo(({
         // centred on it. A field user taps where the door is; before, only a
         // drag drew one, and a tap did nothing at all.
         cancelDraft();
-        // A tap on a Survey Marker already there adds no second one on top.
-        // (Markers take no presses while this tool is armed, so test boxes.)
-        const onMarker = Array.from(svgRef.current?.querySelectorAll?.('[data-survey-marker-id]') || []).some((node) => {
+        // A tap on or near a Survey Marker already there selects it instead of
+        // placing an accidental second marker beside it (#1722).
+        const hitPad = e.pointerType === 'touch' ? 16 : 6;
+        let hitMarkerId = null;
+        let bestDistSq = Infinity;
+        for (const node of svgRef.current?.querySelectorAll?.('[data-survey-marker-id]') || []) {
           const r = node.getBoundingClientRect();
-          return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-        });
-        if (onMarker) return;
+          if (
+            e.clientX >= r.left - hitPad
+            && e.clientX <= r.right + hitPad
+            && e.clientY >= r.top - hitPad
+            && e.clientY <= r.bottom + hitPad
+          ) {
+            const cx = (r.left + r.right) / 2;
+            const cy = (r.top + r.bottom) / 2;
+            const dSq = (e.clientX - cx) ** 2 + (e.clientY - cy) ** 2;
+            if (dSq < bestDistSq) {
+              bestDistSq = dSq;
+              hitMarkerId = node.getAttribute('data-survey-marker-id');
+            }
+          }
+        }
+        if (hitMarkerId) {
+          setSelectedSurveyMarkerId?.(hitMarkerId);
+          return;
+        }
         const box = tapSurveyMarkerBox(state.start, width, height);
         if (box && typeof onSurveyMarkerCreatedRef.current === 'function') {
           recordAnnotationCommit({
