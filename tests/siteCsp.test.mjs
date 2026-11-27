@@ -71,7 +71,7 @@ test('every inline script on a site page is allowed by hash; no inline handlers'
   for (const { file, url } of SITE_PAGES) {
     const html = fs.readFileSync(file, 'utf8');
     for (const m of html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)) {
-      if (/application\/ld\+json/.test(m[1])) continue; // data, never run
+      if (/application\/(?:ld\+)?json/.test(m[1])) continue; // data, never run
       const hash = `'sha256-${crypto.createHash('sha256').update(m[2]).digest('base64')}'`;
       assert.ok(scriptSrc.includes(hash), `${url}: inline script needs ${hash} in the site policy`);
     }

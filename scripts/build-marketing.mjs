@@ -29,7 +29,7 @@ const TOOL_LINKS = [
 ];
 
 const NAV = [
-  ['/kal-voe', 'Kal Voe Suite'],
+  ['https://kalvoe.com/', 'Kal Voe Suite'],
   ['/features', 'Features'],
   ['/pricing', 'Pricing'],
   ...(TOOL_LINKS.length ? [['/tools', 'Free PDF tools']] : []),
@@ -274,7 +274,7 @@ const PLANS = [
 // carve a crescent, and the rays spin and shrink away (site.css drives it).
 const ICON_THEME = '<svg class="sm" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><mask id="sm-cut"><rect width="24" height="24" fill="#fff"/><circle class="sm-bite" cx="12" cy="12" r="8" fill="#000"/></mask><circle class="sm-core" cx="12" cy="12" r="5" mask="url(#sm-cut)"/><g class="sm-rays"><path d="M12 1.5v2.2M12 20.3v2.2M1.5 12h2.2M20.3 12h2.2M4.6 4.6l1.5 1.5M17.9 17.9l1.5 1.5M4.6 19.4l1.5-1.5M17.9 6.1l1.5-1.5"/></g></svg>';
 
-export const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Kal Voe', url: ORIGIN + '/kal-voe', logo: ORIGIN + '/logo512.png', email: 'isaiahcalvo123@gmail.com' };
+export const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Kal Voe', url: 'https://kalvoe.com/', logo: ORIGIN + '/logo512.png', email: 'isaiahcalvo123@gmail.com' };
 const SOFTWARE = {
   '@type': 'SoftwareApplication', '@id': ORIGIN + '/#app', name: 'Survey by Kal Voe', url: ORIGIN + '/',
   applicationCategory: 'BusinessApplication', operatingSystem: 'Web browser, macOS, Windows, iPadOS, Android',
@@ -352,7 +352,7 @@ ${body}
     <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
     <div><h2 class="fh">Free PDF tools</h2>${TOOL_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}</div>` : ''}
     <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${SIGNUP}">Start free</a><a href="${MAIL}">Contact</a><a href="/status">Status</a></div>
-    <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/delete-account">Delete account</a><a href="/kal-voe">Kal Voe</a></div>
+    <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/delete-account">Delete account</a><a href="https://kalvoe.com/">Kal Voe</a></div>
   </div>
   <p class="copy">© <span class="yr">2026</span> Kal Voe LLC. Survey is made by Kal Voe LLC, New Jersey, United States.</p>
 </div></footer>
@@ -519,7 +519,7 @@ const home = page({
   ${FACTS.map(([k, b, t]) => `<div>${svg(k)}<p><b>${b}</b><span>${t}</span></p></div>`).join('\n  ')}
 </div></section>
 
-<div class="suite-strip"><div class="wrap">Part of the <strong>Kal Voe Suite</strong>: <strong>Walkthru</strong> → <strong>Plot</strong> → <strong>Survey</strong>. One account from site walk to closeout. <a href="/kal-voe">Explore the suite →</a></div></div>
+<div class="suite-strip"><div class="wrap">Part of the <strong>Kal Voe Suite</strong>: <strong>Walkthru</strong> → <strong>Plot</strong> → <strong>Survey</strong>. One account from site walk to closeout. <a href="https://kalvoe.com/">Explore the suite →</a></div></div>
 
 <section class="sec" id="how"><div class="wrap">
   <div class="head"><h2>From the drawing set to a spreadsheet</h2><p>Three things we have not found in any other PDF app.</p></div>
@@ -763,79 +763,8 @@ const deleteAccount = page({
 </div></section>`,
 });
 
-// Kal Voe: the flagship suite landing page and the one account behind Walkthru,
-// Plot and Survey (#1677, #1678, #1681, #1683, #1684). Google's sign-in screen
-// names the app "Kal Voe" with this page as its home page, so it preserves the
-// Kal Voe name, logo (public/kal-voe/logo-512.png), Google sign-in disclosures,
-// and privacy/terms links.
-const kalVoe = page({
-  path: '/kal-voe', crumb: 'Kal Voe Suite',
-  title: 'Kal Voe Suite: Walkthru, Plot and Survey for building systems teams',
-  desc: 'Walk the site in Walkthru, draw shop drawings and schedules in Plot, and run field surveys and PDF markups in Survey. One Kal Voe account across all three apps, plus 58 free local PDF tools.',
-  schema: [SOFTWARE],
-  body: `<section class="hero hero-c"><div class="wrap">
-  <div class="hero-copy">
-    <div class="suite-brand"><img src="/kal-voe/logo-512.png" alt="Kal Voe logo" width="44" height="44" /><span>Kal Voe Suite</span></div>
-    <h1>Walk the site. Draw the plan. Verify the build.</h1>
-    <p class="lede">Kal Voe connects the entire building systems job in three focused apps — Walkthru, Plot and Survey — under one account, from first site walk to final closeout.</p>
-    <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Start free</a><a class="btn ghost lg" href="/pricing">See pricing</a></div>
-    <p class="fine">One Kal Voe account for Google, Microsoft or email sign-in. Start free, no card needed.</p>
-  </div>
-  <div class="suite-flow" aria-label="Walkthru to Plot to Survey workflow">
-    <article class="suite-step">
-      <span class="suite-step-n">1</span>
-      <h2>Walkthru</h2>
-      <p>Walk the site on your phone or tablet. Drop devices onto the floor plan, capture photos, and record voice notes and AI-structured summaries as you go.</p>
-      <a href="https://walkthru.tools">Open Walkthru →</a>
-    </article>
-    <article class="suite-step">
-      <span class="suite-step-n">2</span>
-      <h2>Plot</h2>
-      <p>Turn the site walk into contractor shop drawings: lay out devices, tags, risers, cables, title blocks, and unified patching schedules in Excel and PDF.</p>
-      <a href="/pricing">Included in Kal Voe Suite →</a>
-    </article>
-    <article class="suite-step">
-      <span class="suite-step-n">3</span>
-      <h2>Survey</h2>
-      <p>Mark up construction drawings with every tool free, run checklist site surveys on the plan, and export live spreadsheet reports (.xlsx) for the office.</p>
-      <a href="/welcome">Explore Survey →</a>
-    </article>
-  </div>
-</div></section>
-
-<section class="sec"><div class="wrap">
-  <div class="head"><h2>One suite, three apps, zero re-entry</h2><p>Use any app on its own, or move a project straight from Walkthru into Plot and Survey without retyping a single device tag.</p></div>
-  <div class="dev-rows">
-    <article><h2>1. Walkthru</h2><p>Built for pre-sales and field walks. Drop pins on PDF floor plans, record room audio, snap photos, and invite teammates or clients with a link. <a href="https://walkthru.tools">walkthru.tools</a></p></article>
-    <article><h2>2. Plot</h2><p>Built for design and engineering teams. Author floor-plan shop drawings, title blocks, device tags, cable runs, and unified Excel + installer PDF patching schedules.</p></article>
-    <article><h2>3. Survey</h2><p>Built for field markup and closeout. Every PDF markup tool free, count markers with running totals, spaces and regions, and checklist surveys that export to Excel. <a href="/welcome">surveytool.app</a></p></article>
-  </div>
-</div></section>
-
-<section class="sec band-soft" id="suite-pricing"><div class="wrap">
-  <div class="head"><h2>Simple pricing across every app</h2><p>Start free. Pick one Pro app, or bundle Walkthru, Plot and Survey in the Kal Voe Suite for $29/user/month.</p></div>
-  ${billing()}
-  ${plans(true)}
-  <p class="more-link"><a href="/pricing">Compare all 4 plans</a></p>
-</div></section>
-
-<section class="sec" id="suite-free-tools"><div class="wrap tools-split picks-split">
-  <div class="tools-copy">
-    <h2>${PDF_TOOLS.length} free PDF tools, no sign-up</h2>
-    <p>Merge, split, compress, OCR, compare, sign and convert PDFs right in your browser. Your files never leave your device.</p>
-    <p class="more-link"><a href="/tools">Open all ${PDF_TOOLS.length} free PDF tools</a></p>
-  </div>
-  ${toolPicks()}
-</div></section>
-
-<section class="sec tight"><div class="wrap narrow">
-  <h2>One Kal Voe account</h2>
-  <p>Sign in to Walkthru, Plot and Survey with Google, Microsoft or your email. It is the same account in every app, on the web and on your phone. Each app can also be used on its own.</p>
-  <p>Signing in with Google gives us your name, email address and profile picture, for your account. Read the <a href="/privacy.html">privacy policy</a> and <a href="/terms.html">terms</a>.</p>
-  <p class="fine">Kal Voe LLC, New Jersey, United States. Questions? <a href="${MAIL}">Email us</a>.</p>
-</div></section>
-${cta('Start with one account across Walkthru, Plot and Survey', true)}`,
-});
+// The Kal Voe suite site (kalvoe.com, files in public/kal-voe/) is built by
+// scripts/build-suite-site.mjs, which also owns public/kal-voe/index.html.
 
 const longDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 // The newest two days stay open; older ones fold away so the page stays short.
@@ -958,14 +887,14 @@ ${cta('Try Survey free on your own drawings')}`,
 // Importing this file (build-free-tools.mjs does, for the layout) must not
 // rewrite the pages, so the writes only run when it is the script itself.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'delete-account/index.html': deleteAccount, 'whats-new/index.html': whatsNew, 'use-with-ai/index.html': useWithAi, 'kal-voe/index.html': kalVoe };
+  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'delete-account/index.html': deleteAccount, 'whats-new/index.html': whatsNew, 'use-with-ai/index.html': useWithAi };
   for (const [p, html] of Object.entries(out)) {
     const f = join(root, p);
     mkdirSync(dirname(f), { recursive: true });
     writeFileSync(f, html);
   }
 
-  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/use-with-ai', '/status', '/delete-account', '/whats-new', '/kal-voe', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
+  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/use-with-ai', '/status', '/delete-account', '/whats-new', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
   writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}
@@ -986,7 +915,7 @@ Pricing (4 tiers):
 
 ## Pages
 
-- [Kal Voe Suite](${ORIGIN}/kal-voe): Walkthru, Plot and Survey workflow and unified account
+- [Kal Voe Suite](https://kalvoe.com/): Walkthru, Plot and Survey workflow and unified account
 - [Survey Home](${ORIGIN}/welcome): what Survey is and who it is for
 - [Features](${ORIGIN}/features): site surveys with data export, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
 - [Devices](${ORIGIN}/devices): desktop, tablet and phone

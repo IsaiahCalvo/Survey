@@ -31,8 +31,10 @@ test('suite marks: no public page, style sheet or manifest holds the old gold', 
   // The Nightly mark keeps its own violet (public/nightly) and is not checked.
   // public/brand-gold holds the gold icons that wait for the look to leave
   // Nightly (docs/suite/survey-gold-flip.md); that switch removes this test.
+  // The Kal Voe suite site (public/kal-voe) shows each app in its own accent from
+  // SUITE-RULES "One colour set", so Survey is gold there already.
   const files = [...htmlUnder('public'), ...htmlUnder('tools')]
-    .filter((f) => !f.startsWith(join('public', 'nightly')) && !f.startsWith(join('public', 'brand-gold')));
+    .filter((f) => !f.startsWith(join('public', 'nightly')) && !f.startsWith(join('public', 'brand-gold')) && !f.startsWith(join('public', 'kal-voe')));
   assert.ok(files.length > 50, 'found the public pages');
   for (const file of files) assert.doesNotMatch(read(file), OLD_GOLD, file);
 });

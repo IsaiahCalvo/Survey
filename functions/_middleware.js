@@ -2,6 +2,74 @@ import { applySecurityHeaders } from './_lib/securityHeaders.js';
 
 const KAL_VOE_HOST = 'kalvoe.com';
 const KAL_VOE_PAGE = '/kal-voe/';
+const KAL_VOE_ROOT = '/kal-voe';
+
+// App subdomains, Google/Adobe style: <app>.kalvoe.com opens the app itself.
+// Inert until the subdomain is added to this Pages project and DNS points here.
+const KAL_VOE_APP_HOSTS = new Map([
+  ['survey.kalvoe.com', 'https://surveytool.app'],
+  ['walkthru.kalvoe.com', 'https://walkthru.tools'],
+  ['plot.kalvoe.com', 'https://plot-taupe-eight.vercel.app'],
+]);
+
+// Paths on kalvoe.com that keep their normal Survey handling.
+function isKalVoePassthrough(pathname) {
+  return (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/.well-known/') ||
+    pathname.startsWith('/assets/') ||
+    pathname === '/mcp' ||
+    pathname.startsWith('/mcp/') ||
+    pathname === '/privacy' ||
+    pathname === '/terms' ||
+    pathname === '/privacy.html' ||
+    pathname === '/terms.html'
+  );
+}
+
+function hasExtension(pathname) {
+  return (pathname.split('/').pop() || '').includes('.');
+}
+
+// The suite site lives in public/kal-voe/ and is served at the root of kalvoe.com:
+// kalvoe.com/pricing -> /kal-voe/pricing/index.html. Returns null to fall through.
+async function serveKalVoe(url, request, env) {
+  const { pathname } = url;
+  if (isKalVoePassthrough(pathname)) return null;
+
+  if (pathname === '/' && (url.searchParams.has('signin') || url.searchParams.has('signup'))) {
+    const surveyUrl = new URL('/', 'https://surveytool.app');
+    surveyUrl.search = url.search;
+    return applySecurityHeaders(Response.redirect(surveyUrl.toString(), 302), KAL_VOE_PAGE);
+  }
+
+  // Old /kal-voe/... page URLs move to the root. Files under /kal-voe/ (logo, static) still load.
+  if (pathname === KAL_VOE_ROOT || (pathname.startsWith(`${KAL_VOE_ROOT}/`) && !hasExtension(pathname))) {
+    const target = new URL(url);
+    target.pathname = pathname.slice(KAL_VOE_ROOT.length).replace(/\/+$/, '') || '/';
+    return applySecurityHeaders(Response.redirect(target.toString(), 308), KAL_VOE_PAGE);
+  }
+  if (pathname.startsWith(`${KAL_VOE_ROOT}/`)) return null;
+
+  // One URL per page: /pricing/ -> /pricing.
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    const target = new URL(url);
+    target.pathname = pathname.replace(/\/+$/, '');
+    return applySecurityHeaders(Response.redirect(target.toString(), 308), KAL_VOE_PAGE);
+  }
+
+  if (!env?.ASSETS?.fetch) return null;
+  const assetPath = hasExtension(pathname)
+    ? `${KAL_VOE_ROOT}${pathname}`
+    : `${KAL_VOE_ROOT}${pathname === '/' ? '/' : `${pathname}/`}`;
+  const res = await env.ASSETS.fetch(new Request(new URL(assetPath, url.origin).toString(), request));
+  if (res.ok) return applySecurityHeaders(res, assetPath);
+
+  const notFound = await env.ASSETS.fetch(new Request(new URL(`${KAL_VOE_ROOT}/404.html`, url.origin).toString(), request));
+  const body = notFound.ok ? notFound.body : 'Not found';
+  const headers = new Headers(notFound.ok ? notFound.headers : { 'Content-Type': 'text/plain; charset=utf-8' });
+  return applySecurityHeaders(new Response(body, { status: 404, statusText: 'Not Found', headers }), `${KAL_VOE_ROOT}/404.html`);
+}
 
 const PERMANENT_REDIRECTS = new Map([
   ['/privacy', '/privacy.html'],
@@ -34,22 +102,20 @@ export async function onRequest(context) {
     return applySecurityHeaders(Response.redirect(url.toString(), 308), pathname);
   }
 
+  const appHost = KAL_VOE_APP_HOSTS.get(url.hostname);
+  if (appHost) {
+    const target = new URL(pathname + url.search, appHost);
+    return applySecurityHeaders(Response.redirect(target.toString(), 302), pathname);
+  }
+
   if (url.hostname === KAL_VOE_HOST && (request.method === 'GET' || request.method === 'HEAD')) {
-    if (pathname === '/kal-voe' || pathname === KAL_VOE_PAGE) {
-      url.pathname = '/';
-      return applySecurityHeaders(Response.redirect(url.toString(), 308), KAL_VOE_PAGE);
-    }
-
-    if (pathname === '/') {
-      if (url.searchParams.has('signin') || url.searchParams.has('signup')) {
-        const surveyUrl = new URL('/', 'https://surveytool.app');
-        surveyUrl.search = url.search;
-        return applySecurityHeaders(Response.redirect(surveyUrl.toString(), 302), KAL_VOE_PAGE);
-      }
-
-      const page = await env.ASSETS.fetch(new Request(new URL(KAL_VOE_PAGE, url), request));
-      return applySecurityHeaders(page, KAL_VOE_PAGE);
-    }
+    const suite = await serveKalVoe(url, request, env);
+    if (suite) return suite;
+  } else if (pathname === KAL_VOE_ROOT || (pathname.startsWith(`${KAL_VOE_ROOT}/`) && !hasExtension(pathname))) {
+    // Parity with vercel.json: suite pages on other hosts send visitors to kalvoe.com.
+    const target = new URL(pathname.slice(KAL_VOE_ROOT.length) || '/', `https://${KAL_VOE_HOST}`);
+    target.search = url.search;
+    return applySecurityHeaders(Response.redirect(target.toString(), 302), KAL_VOE_PAGE);
   }
 
   const redirectTarget = PERMANENT_REDIRECTS.get(pathname);

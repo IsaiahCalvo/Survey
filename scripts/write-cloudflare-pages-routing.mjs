@@ -19,7 +19,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 // Directories whose files are all static (no HTML pages to route).
 const STATIC_DIRS = ['assets', 'ocr', 'brand-gold', 'nightly'];
 // Files Pages treats specially or that must keep running through the function.
-const NEVER_EXCLUDE = new Set(['_routes.json', '_headers', '_redirects', '404.html', 'index.html']);
+// robots.txt, sitemap.xml and favicon.ico differ by host: kalvoe.com gets the
+// suite's copies from public/kal-voe/ through the middleware.
+const NEVER_EXCLUDE = new Set(['_routes.json', '_headers', '_redirects', '404.html', 'index.html', 'robots.txt', 'sitemap.xml', 'favicon.ico']);
 const MAX_RULES = 100; // Cloudflare's limit for _routes.json and for _headers
 const MAX_RULE_CHARS = 100;
 

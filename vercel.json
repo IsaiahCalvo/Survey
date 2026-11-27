@@ -5,7 +5,9 @@
   },
   "redirects": [
     { "source": "/privacy", "destination": "/privacy.html", "permanent": true },
-    { "source": "/terms", "destination": "/terms.html", "permanent": true }
+    { "source": "/terms", "destination": "/terms.html", "permanent": true },
+    { "source": "/kal-voe", "destination": "https://kalvoe.com/", "permanent": false },
+    { "source": "/kal-voe/:path((?!static/)[^.]*)", "destination": "https://kalvoe.com/:path", "permanent": false }
   ],
   "rewrites": [
     { "source": "/api/public-status.json", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/public/app-public/status.json" },
@@ -21,7 +23,6 @@
     { "source": "/delete-account", "destination": "/delete-account/index.html" },
     { "source": "/whats-new", "destination": "/whats-new/index.html" },
     { "source": "/use-with-ai", "destination": "/use-with-ai/index.html" },
-    { "source": "/kal-voe", "destination": "/kal-voe/index.html" },
     { "source": "/use-cases", "destination": "/use-cases/index.html" },
     { "source": "/use-cases/:slug", "destination": "/use-cases/:slug/index.html" },
     { "source": "/compare/:slug", "destination": "/compare/:slug/index.html" },
