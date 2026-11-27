@@ -1053,10 +1053,25 @@ export const useStorage = () => {
     verifiedPdfStamps.delete(saved.filePath);
     signedUrlCache().invalidate(DOCUMENTS_BUCKET, saved.filePath);
     if (filePath && filePath !== saved.filePath) {
+      storageDownloads(supabase).invalidate(filePath);
       verifiedPdfStamps.delete(filePath);
       signedUrlCache().invalidate(DOCUMENTS_BUCKET, filePath);
     }
-    void pdfByteCache().removePath(saved.filePath);
+    // Re-seed this device's verified byte cache with the newly uploaded page-edit
+    // bytes (same 2 s cap as uploadDocument) so the next reopen downloads nothing.
+    await withTimeout((async () => {
+      await pdfByteCache().removePath(saved.filePath);
+      if (filePath && filePath !== saved.filePath) {
+        await pdfByteCache().removePath(filePath);
+      }
+      await seedPdfCacheFromUpload({
+        cache: pdfByteCache(),
+        actorId: user.id,
+        path: saved.filePath,
+        file,
+        fetchInfo: () => fetchStoredPdfInfo(saved.filePath),
+      });
+    })().catch(() => { /* cache only: the replacement itself succeeded */ }), 2_000);
     return saved;
   }, [user]);
 
