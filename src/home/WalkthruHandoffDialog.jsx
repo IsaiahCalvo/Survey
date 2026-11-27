@@ -43,7 +43,12 @@ export function handoffSummary(result) {
     ? [result.added ? `${plural(result.added, 'marker')} added` : '', result.updated ? `${plural(result.updated, 'marker')} updated` : ''].filter(Boolean).join(', ')
     : 'No markers added');
   const missing = (result.notInModule || []).reduce((sum, m) => sum + m.count, 0);
-  if (missing) parts.push(`${plural(missing, 'node')} not in this Module`);
+  const missingWord = !result.source || result.source === 'Walkthru'
+    ? 'node'
+    : result.source === 'Plot'
+      ? 'device'
+      : 'item';
+  if (missing) parts.push(`${plural(missing, missingWord)} not in this Module`);
   if (result.unplaced) parts.push(`${plural(result.unplaced, 'marker')} with no spot yet`);
   if (result.defaultNodes) {
     parts.push(!result.source || result.source === 'Walkthru'
