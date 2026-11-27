@@ -10,9 +10,9 @@ describe('Read-only open sync hygiene (#1791) and desktop toast clearance (#1788
     const viewer = fs.readFileSync(path.join(root, 'src/PDFViewer.jsx'), 'utf8');
 
     assert.match(viewer, /const lastSyncedAnnotationsRef = useRef\(JSON\.stringify\(\{\}\)\);/);
-    assert.match(viewer, /const setSurveyMarkersFromHydration = useCallback\(/);
-    assert.match(viewer, /setSurveyMarkers:\s*setSurveyMarkersFromHydration,/);
-    assert.match(viewer, /setSurveyMarkersFromHydration\(loadedSurveyMarkers\);/);
+    assert.match(viewer, /const setSurveyMarkersRaw = useCallback\(/);
+    assert.match(viewer, /setSurveyMarkers:\s*setSurveyMarkersRaw,/);
+    assert.match(viewer, /setSurveyMarkersRaw\(loadedSurveyMarkers\);/);
   });
 
   it('lifts desktop toasts above .sheet-set-bar using --app-toast-bottom (#1788)', () => {

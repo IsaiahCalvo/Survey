@@ -8838,14 +8838,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [surveyResponses, setSurveyResponses] = useState({}); // { [itemId]: { selection: 'Y'|'N'|'N/A', note: { text, photos, videos } } }
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
-  const [surveyMarkers, setSurveyMarkersRaw] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const [surveyMarkers, setSurveyMarkersState] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
   const lastSyncedAnnotationsRef = useRef(JSON.stringify({}));
   // Hydrated / remote loads (Y.Doc, initial open, Realtime peers) are NOT local
   // edits: record their serialized snapshot in lastSyncedAnnotationsRef so the
   // document_annotations projection effect does not immediately re-upsert them
   // and bump documents.updated_at on a read-only open (#1791).
-  const setSurveyMarkersFromHydration = useCallback((update) => {
-    setSurveyMarkersRaw((prev) => {
+  const setSurveyMarkersRaw = useCallback((update) => {
+    setSurveyMarkersState((prev) => {
       const next = typeof update === 'function' ? update(prev) : update;
       try {
         lastSyncedAnnotationsRef.current = JSON.stringify(next || {});
@@ -8854,10 +8854,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     });
   }, []);
   // Local edits stamp Changed By / Changed Date (surveyMarkerStamp.js); the
-  // durable store's own loads and other screens' edits use the hydration setter.
+  // durable store's own loads and other screens' edits use the raw setter.
   const surveyMarkerStampByRef = useRef('');
   const setSurveyMarkers = useCallback((update) => {
-    setSurveyMarkersRaw((prev) => stampChangedSurveyMarkers(
+    setSurveyMarkersState((prev) => stampChangedSurveyMarkers(
       prev,
       typeof update === 'function' ? update(prev) : update,
       { by: surveyMarkerStampByRef.current },
@@ -21741,7 +21741,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        setSurveyMarkersFromHydration(prev => ({
+        setSurveyMarkersRaw(prev => ({
           ...prev,
           [annotation.annotationId]: {
             pageNumber: annotation.pageNumber,
@@ -21772,7 +21772,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        setSurveyMarkersFromHydration(prev => ({
+        setSurveyMarkersRaw(prev => ({
           ...prev,
           [annotation.annotationId]: {
             ...prev[annotation.annotationId],
@@ -21801,7 +21801,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }));
       },
       onDelete: (annotationId) => {
-        setSurveyMarkersFromHydration(prev => {
+        setSurveyMarkersRaw(prev => {
           const next = { ...prev };
           delete next[annotationId];
           return next;
@@ -22639,7 +22639,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     spaces,
     setSpaces,
     surveyMarkers,
-    setSurveyMarkers: setSurveyMarkersFromHydration,
+    setSurveyMarkers: setSurveyMarkersRaw,
     eraseEffectConsumer: consumeEraseOutboxEffect,
     onHistoryQuarantine: handleAnnotationHistoryQuarantine,
     // The unscaled per-page PDF pixel sizes the SVG layer inverts callouts
@@ -24679,7 +24679,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       setPdfId(null);
       setItems({});
       setAnnotations({});
-      setSurveyMarkersFromHydration({});
+      setSurveyMarkersRaw({});
       setSurveyAnnotationHydration(ANNOTATION_HYDRATION_READY_LOCAL);
       return;
     }
@@ -24713,7 +24713,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       : loadSurveyMarkers(id);
     // Hydration setter: opening a file is not an edit, so nothing gets Changed
     // By stamped and the loaded state becomes the synced baseline (#1791).
-    setSurveyMarkersFromHydration(loadedSurveyMarkers);
+    setSurveyMarkersRaw(loadedSurveyMarkers);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
     // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
