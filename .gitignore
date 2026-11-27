@@ -113,3 +113,7 @@ debug/crash-hunt/runs/
 .env.eval
 /playwright-report-e2e/
 /dist-speed
+
+# Cloudflare Pages Functions local build output
+dist-functions/
+.wrangler/

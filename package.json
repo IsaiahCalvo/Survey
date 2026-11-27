@@ -12,6 +12,7 @@
     "postinstall": "node scripts/bootstrap-dev-env.mjs",
     "prebuild": "node scripts/write-release-marker.mjs",
     "build": "vite build && node scripts/assert-no-pdfjs-demo-in-dist.mjs && node scripts/assert-no-secrets-in-dist.mjs",
+    "cf:build": "npm run build && wrangler pages functions build functions --outdir dist-functions --compatibility-date=2025-11-01 --compatibility-flags=nodejs_compat",
     "check:licenses": "node scripts/check-licenses.mjs",
     "dist": "npm run build && electron-builder",
     "test": "node scripts/run-node-tests.mjs",
