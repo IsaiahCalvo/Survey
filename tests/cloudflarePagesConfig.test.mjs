@@ -71,7 +71,7 @@ test('Cloudflare Pages middleware redirects /privacy and /terms and serves SPA f
     env: {
       ASSETS: {
         fetch: async (req) => {
-          assert.equal(new URL(req.url).pathname, '/index.html');
+          assert.equal(new URL(req.url).pathname, '/');
           return new Response('<html>app</html>', {
             status: 200,
             headers: { 'Content-Type': 'text/html' },
