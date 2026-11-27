@@ -42,7 +42,8 @@ test('Kal Voe Suite page covers Walkthru -> Plot -> Survey workflow, 4 tiers, 58
   assert.match(html, /href="\/tools"/);
   assert.match(html, /logo-512\.png/);
   assert.match(html, /Signing in with Google gives us your name/);
-  assert.match(html, /<link rel="canonical" href="https:\/\/surveytool\.app\/kal-voe"/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/kalvoe\.com\/"/);
+  assert.match(html, /property="og:url" content="https:\/\/kalvoe\.com\/"/);
   assert.match(html, /property="og:title"/);
   assert.match(html, /property="og:description"/);
   assert.match(html, /property="og:image"/);
