@@ -558,3 +558,85 @@
 @media (max-width: 480px) {
   .auth-name-row { grid-template-columns: 1fr; gap: 14px; }
 }
+
+/* Narrow / touch viewports (<= 767px): enforce 44px minimum hit targets on
+   every sign-in dialog control without disturbing compact desktop (>= 768px)
+   sizing. */
+@media (max-width: 767px) {
+  .auth-modal-close {
+    width: 44px;
+    height: 44px;
+    top: 4px;
+    right: 4px;
+  }
+
+  .auth-modal-close::after {
+    inset: 0;
+  }
+
+  .auth-form-group input {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  .auth-form-group.has-forgot {
+    align-items: center;
+  }
+
+  .auth-forgot-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 4px;
+    margin: -14px -4px -6px;
+  }
+
+  .auth-submit-btn,
+  .auth-google-btn {
+    height: auto;
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .auth-terms-note {
+    margin-top: 8px;
+    padding-block: 0;
+  }
+
+  .auth-terms-note a,
+  .auth-terms a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    vertical-align: middle;
+  }
+
+  .auth-footer {
+    margin-top: 12px;
+    padding-top: 4px;
+  }
+
+  .auth-footer p {
+    margin: 0;
+  }
+
+  .auth-link-btn,
+  .auth-sso-link,
+  .auth-dismiss-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .auth-sso-link {
+    display: flex;
+    margin-top: 0;
+  }
+
+  .auth-dismiss {
+    margin-top: 0;
+  }
+}
+

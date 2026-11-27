@@ -6044,3 +6044,35 @@ html[data-look='suite'] .survey-hub .templates-mobile-back-button { background: 
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
+
+/* Narrow / touch viewports (<= 767px): enforce 44px minimum hit targets on
+   sidebar Sign in, New project, and toolbar Select buttons while preserving
+   compact desktop (>= 768px) layout and phone header row geometry. */
+@media (max-width: 767px) {
+  .survey-hub .side .profile-signin {
+    min-height: 44px;
+  }
+
+  .survey-hub .hub-new-btn,
+  .survey-hub .hub-empty-state .btn.primary {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .survey-hub .hub-panel-head .section-icon-btn.section-icon-btn:not(.is-word),
+  .survey-hub .hub-section-head .section-icon-btn.section-icon-btn:not(.is-phone):not(.is-word),
+  .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .survey-hub .hub-panel-head .section-icon-btn.section-icon-btn.is-word,
+  .survey-hub .hub-section-head .section-icon-btn.section-icon-btn.is-word:not(.is-phone) {
+    height: 44px;
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
