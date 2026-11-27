@@ -42849,7 +42849,7 @@ ${pageBlocks}
                   { id: 'text', label: 'Text', iconName: 'textBox' },
                   { id: 'callout', label: 'Callout', iconName: 'callout' },
                   // Nightly 'stamp-tool': opens Drawboard's Stamp card.
-                  ...(stampToolEnabled ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
+                  ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
                   // Nightly 'insert-image': picks a picture and drops it on the page.
                   ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
                   // Nightly 'image-camera': take a photo and drop it on the page.
