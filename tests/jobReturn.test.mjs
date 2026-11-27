@@ -116,6 +116,36 @@ test('the file is Plot\'s job with the new package.json', async () => {
   assert.throws(() => buildReturnManifest({ manifest: { format: 'x' } }), /not a Kal Voe job file/);
 });
 
+test('#1602: a page in { objects } shape with a red line is sent back in the kvjob', async () => {
+  const { markupsFromPage, buildReturnManifest, writeReturnJob } = await import('../src/suite/jobReturn.js');
+  const redLine = { type: 'line', left: 0, top: 0, x1: 100, y1: 50, x2: 200, y2: 100, stroke: '#ff0000' };
+  // Same shape Dashboard sendBackToPlot reads: getByPage()[pageNumber] is { objects }.
+  const marksByDoc = new Map([['doc-1', { 1: { objects: [redLine] } }]]);
+  const at = { documentId: 'doc-1', pageNumber: 1, pageId: 'B01', page: PAGE };
+  const marks = marksByDoc.get(at.documentId)?.[at.pageNumber] || [];
+  const markups = markupsFromPage(marks, { pageId: at.pageId, page: at.page });
+  const sent = { ...manifest, annotations: [] };
+  const zip = new JSZip();
+  zip.file('package.json', JSON.stringify(sent));
+  zip.file('pages/B01.pdf', '%PDF-1.4 one');
+  const { manifest: back, counts } = buildReturnManifest({
+    manifest: sent,
+    documents: [{ documentId: 'doc-1', markers: arrive() }],
+    markups,
+  });
+  const out = await JSZip.loadAsync(await writeReturnJob(zip, back));
+  const exported = JSON.parse(await out.file('package.json').async('string'));
+  assert.ok(Array.isArray(exported.annotations) && exported.annotations.length > 0, 'exported kvjob must carry the red line');
+  assert.equal(counts.markups, 1);
+  assert.deepEqual(exported.annotations.find((a) => a.kind === 'markup'), {
+    kind: 'markup',
+    shape: 'line',
+    pageId: 'B01',
+    points: [{ x: 0.1, y: 0.1 }, { x: 0.2, y: 0.2 }],
+    color: '#ff0000',
+  });
+});
+
 test('a page\'s drawn marks become markup; markers and highlights stay out', async () => {
   const { markupsFromPage, jobPagesOf } = await import('../src/suite/jobReturn.js');
   const marks = markupsFromPage([
