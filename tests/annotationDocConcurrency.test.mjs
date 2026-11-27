@@ -6516,7 +6516,7 @@ test('a CAS gap repair cannot let a later dependent overtake its predecessor', a
           return { data: null, error: { code: 'XX000', message: 'checkpoint unavailable' } };
         }
         if (storeAttempt === 5) {
-          return { data: null, error: { code: '40001', message: 'stale annotation snapshot replacement' } };
+          return { data: null, error: { code: 'PT409', message: 'annotation snapshot write contention' } };
         }
         acceptedSnapshots.push(args.p_snapshot);
         return { data: true, error: null };
