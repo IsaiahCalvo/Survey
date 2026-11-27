@@ -38,18 +38,58 @@ let lastDeliveryWarningAt = 0;
 // #1628: 12 red 503s after a reload).
 const NOT_CONFIGURED_KEY = 'survey-analytics-not-configured-until';
 const NOT_CONFIGURED_MS = 60 * 60_000;
-const readNotConfigured = () => {
-  try {
-    return Number(globalThis.window?.sessionStorage?.getItem(NOT_CONFIGURED_KEY) || 0) > Date.now();
-  } catch { return false; }
+const BACKOFF_UNTIL_KEY = 'survey-analytics-backoff-until';
+const BACKOFF_BASE_MS = 60_000;
+const BACKOFF_MAX_MS = 5 * 60_000;
+const RATE_LIMIT_BACKOFF_MS = 15 * 60_000;
+
+export const nextAnalyticsBackoffMs = (failures, status = 0) => {
+  if (Number(status) === 429) return RATE_LIMIT_BACKOFF_MS;
+  const step = Math.max(0, Math.min(4, (Number(failures) || 1) - 1));
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * (2 ** step));
 };
+
+const readStoredTimestamp = (key) => {
+  try {
+    return Number(globalThis.window?.sessionStorage?.getItem(key) || 0) || 0;
+  } catch { return 0; }
+};
+const writeStoredTimestamp = (key, untilMs) => {
+  try {
+    if (untilMs > 0) window.sessionStorage.setItem(key, String(untilMs));
+    else window.sessionStorage.removeItem(key);
+  } catch { /* fine */ }
+};
+
+const readNotConfigured = () => readStoredTimestamp(NOT_CONFIGURED_KEY) > Date.now();
 let collectorNotConfigured = readNotConfigured();
 const rememberNotConfigured = () => {
   collectorNotConfigured = true;
-  try { window.sessionStorage.setItem(NOT_CONFIGURED_KEY, String(Date.now() + NOT_CONFIGURED_MS)); } catch { /* fine */ }
+  writeStoredTimestamp(NOT_CONFIGURED_KEY, Date.now() + NOT_CONFIGURED_MS);
 };
+
+// Back off on transient collector outages (e.g. 503 analytics_quota_unavailable,
+// 502/504, 429, or network errors) so an outage causes at most one probe per
+// window instead of 40+ red 503s in DevTools (#1628).
+let unavailableUntilMs = readStoredTimestamp(BACKOFF_UNTIL_KEY);
+let consecutiveFailures = unavailableUntilMs > Date.now() ? 1 : 0;
+let lastUnavailableStatus = 503;
+
+const recordTransientOutage = (status) => {
+  consecutiveFailures += 1;
+  lastUnavailableStatus = Number(status) || 503;
+  unavailableUntilMs = Date.now() + nextAnalyticsBackoffMs(consecutiveFailures, status);
+  writeStoredTimestamp(BACKOFF_UNTIL_KEY, unavailableUntilMs);
+};
+const clearTransientOutage = () => {
+  if (consecutiveFailures === 0 && unavailableUntilMs === 0) return;
+  consecutiveFailures = 0;
+  unavailableUntilMs = 0;
+  writeStoredTimestamp(BACKOFF_UNTIL_KEY, 0);
+};
+
 // Until the collector has answered once, later events wait for that first
-// answer instead of all going out at once (page load fires several together).
+// probe instead of all going out in parallel during startup.
 let firstAnswer = null;
 let answeredOnce = false;
 
@@ -111,6 +151,7 @@ export const classifyAnalyticsDelivery = ({ ok, status, contentType = '', body =
 
 export const isRetryableAnalyticsDelivery = (result) => result?.reason === 'network_error'
   || result?.reason === 'collector_rejected'
+  || result?.reason === 'collector_backoff'
   || result?.reason === 'authentication_required'
   || (result?.reason === 'http_error' && [0, 408, 425, 429, 500, 502, 503, 504].includes(result.status));
 
@@ -129,7 +170,7 @@ const publishDeliveryStatus = (result) => {
   };
   window.__surveyAnalyticsDeliveryStatus = detail;
   window.dispatchEvent(new CustomEvent('survey-analytics-delivery-status', { detail }));
-  if (!result.ok && !result.disabled && Date.now() - lastDeliveryWarningAt > 60_000) {
+  if (!result.ok && !result.disabled && result.reason !== 'collector_backoff' && Date.now() - lastDeliveryWarningAt > 60_000) {
     lastDeliveryWarningAt = Date.now();
     console.warn('[Survey analytics] Collector unavailable', {
       reason: result.reason,
@@ -161,9 +202,15 @@ const observeDelivery = async (request, accessToken = '') => {
       contentType,
       body,
     });
+    if (result.ok) {
+      clearTransientOutage();
+    } else if (result.status === 429 || result.status >= 500) {
+      recordTransientOutage(result.status);
+    }
     publishDeliveryStatus(result);
     return result;
   } catch {
+    recordTransientOutage(0);
     const result = { ok: false, reason: 'network_error', status: 0 };
     publishDeliveryStatus(result);
     return result;
@@ -190,65 +237,81 @@ const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
   // events get a non-retryable nack below, so they drop instead of piling up.
   if (readUsageStatsOff()) return Promise.resolve({ ok: false, reason: 'turned_off', status: 0, disabled: true });
   if (collectorNotConfigured) return Promise.resolve({ ok: false, reason: 'not_configured', status: 503, disabled: true });
+  if (unavailableUntilMs > Date.now()) {
+    return Promise.resolve({ ok: false, reason: 'collector_backoff', status: lastUnavailableStatus });
+  }
   // Hard client ceiling: analytics must never create an unbounded event bill or
   // error-loop storm. No retries and no session replay are installed here.
   if (!analyticsRateLimiter.allow()) return false;
-  const sessionId = getSessionId();
-  const path = /^\/mobile(?:\/|$)/.test(window.location.pathname) ? '/mobile' : window.location.pathname;
-  const payload = {
-    event: safeIdentifier(event, 100),
-    anonymousId: sessionId,
-    sessionId,
-    timestamp: new Date().toISOString(),
-    properties: {
-      app: 'survey',
-      surface: window.ReactNativeWebView ? 'expo-webview' : 'web',
-      path,
-      ...sanitizeAnalyticsProperties(properties),
-    },
-    context: { source: 'survey-web' },
-  };
-  const session = await getSupabaseSession('surveyAnalytics').catch(() => null);
-  const accessToken = session?.access_token || '';
-  if (!accessToken) {
-    const result = { ok: false, reason: 'authentication_required', status: 0, disabled: true };
-    publishDeliveryStatus(result);
-    return result;
-  }
-  if (rejectedAccessToken && accessToken === rejectedAccessToken) {
-    const result = { ok: false, reason: 'invalid_session', status: 401, disabled: true };
-    publishDeliveryStatus(result);
-    return result;
-  }
-  if (rejectedAccessToken && accessToken !== rejectedAccessToken) {
-    rejectedAccessToken = '';
-  }
 
-  if (!answeredOnce && firstAnswer) {
-    await firstAnswer;
-    if (collectorNotConfigured) return { ok: false, reason: 'not_configured', status: 503, disabled: true };
-    if (rejectedAccessToken && accessToken === rejectedAccessToken) {
-      return { ok: false, reason: 'invalid_session', status: 401, disabled: true };
+  // Claim the first-probe slot synchronously before awaiting auth/network so
+  // startup event bursts wait for one answer instead of firing N parallel 503s.
+  let releaseFirstProbe = null;
+  if (!answeredOnce) {
+    if (firstAnswer) {
+      await firstAnswer;
+      if (collectorNotConfigured) return { ok: false, reason: 'not_configured', status: 503, disabled: true };
+      if (unavailableUntilMs > Date.now()) {
+        return { ok: false, reason: 'collector_backoff', status: lastUnavailableStatus };
+      }
+    } else {
+      firstAnswer = new Promise((resolve) => { releaseFirstProbe = resolve; });
     }
   }
 
-  const request = window.location.protocol === 'file:'
-    && typeof window.electronAPI?.trackSurveyAnalytics === 'function'
-    ? window.electronAPI.trackSurveyAnalytics({ payload, accessToken })
-    : fetch(resolveSurveyAnalyticsEndpoint(window.location), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
+  try {
+    const sessionId = getSessionId();
+    const path = /^\/mobile(?:\/|$)/.test(window.location.pathname) ? '/mobile' : window.location.pathname;
+    const payload = {
+      event: safeIdentifier(event, 100),
+      anonymousId: sessionId,
+      sessionId,
+      timestamp: new Date().toISOString(),
+      properties: {
+        app: 'survey',
+        surface: window.ReactNativeWebView ? 'expo-webview' : 'web',
+        path,
+        ...sanitizeAnalyticsProperties(properties),
       },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    });
-  const delivery = observeDelivery(request, accessToken);
-  if (!answeredOnce && !firstAnswer) {
-    firstAnswer = delivery.finally(() => { answeredOnce = true; firstAnswer = null; });
+      context: { source: 'survey-web' },
+    };
+    const session = await getSupabaseSession('surveyAnalytics').catch(() => null);
+    const accessToken = session?.access_token || '';
+    if (!accessToken) {
+      const result = { ok: false, reason: 'authentication_required', status: 0, disabled: true };
+      publishDeliveryStatus(result);
+      return result;
+    }
+    if (rejectedAccessToken && accessToken === rejectedAccessToken) {
+      const result = { ok: false, reason: 'invalid_session', status: 401, disabled: true };
+      publishDeliveryStatus(result);
+      return result;
+    }
+    if (rejectedAccessToken && accessToken !== rejectedAccessToken) {
+      rejectedAccessToken = '';
+    }
+
+    const request = window.location.protocol === 'file:'
+      && typeof window.electronAPI?.trackSurveyAnalytics === 'function'
+      ? window.electronAPI.trackSurveyAnalytics({ payload, accessToken })
+      : fetch(resolveSurveyAnalyticsEndpoint(window.location), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      });
+    const delivery = await observeDelivery(request, accessToken);
+    if (releaseFirstProbe) answeredOnce = true;
+    return delivery;
+  } finally {
+    if (releaseFirstProbe) {
+      firstAnswer = null;
+      releaseFirstProbe();
+    }
   }
-  return delivery;
 };
 
 export function trackSurveyAnalyticsEvent(event, properties = {}) {
