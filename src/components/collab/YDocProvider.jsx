@@ -1531,7 +1531,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       // check, realtime collaborator changes, tab activation and becoming
       // visible again always run ({ force: true }), so nothing a change sends
       // is dropped.
-      if (!options?.force && (!isActiveRef.current || (typeof document !== 'undefined' && document.visibilityState === 'hidden'))) return;
+      if (!options?.force && !isActiveRef.current) return;
+      if (!options?.force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       if (inFlight) return;
       if (!options?.force && sharedBackoff.isBlocked()) return;
