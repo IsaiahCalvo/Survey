@@ -152,20 +152,23 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
     if (!interactive || !el || typeof document === 'undefined') return undefined;
     const unguardDrag = guardTextLayerDrag(el);
     let drag = null;
-    let repairTimer = 0;
+    let repairFrame = 0;
     const clearDrag = () => { drag = null; };
     const completeDrag = (completedDrag, clientX, clientY) => {
       if (Math.hypot(clientX - completedDrag.x, clientY - completedDrag.y) < 2) return;
-      window.clearTimeout(repairTimer);
-      repairTimer = window.setTimeout(() => {
+      window.cancelAnimationFrame(repairFrame);
+      // Run on the first animation frame (after mouseup settles and strictly
+      // before useTextHighlightMode's two-frame apply), avoiding 4ms timer races.
+      repairFrame = window.requestAnimationFrame(() => {
         repairCollapsedTextDragSelection({
           documentRef: document,
           windowRef: window,
           selectionSnapshot: completedDrag.selectionSnapshot,
           startBoundary: completedDrag.boundary,
+          startClientPoint: { x: completedDrag.x, y: completedDrag.y },
           endClientPoint: { x: clientX, y: clientY },
         });
-      }, 0);
+      });
     };
     const onPointerDown = (event) => {
       if (event.isPrimary === false || event.button !== 0 || event.pointerType === 'touch') return;
@@ -215,7 +218,7 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
       if (!drag) return;
       event.detail.cancelled = true;
       clearDrag();
-      window.clearTimeout(repairTimer);
+      window.cancelAnimationFrame(repairFrame);
     };
     window.addEventListener('survey-cancel-selection-gesture', cancelSelectionGesture);
     document.addEventListener('pointercancel', clearDrag, true);
@@ -224,7 +227,7 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
     document.addEventListener('touchcancel', clearDrag, true);
     return () => {
       unguardDrag();
-      window.clearTimeout(repairTimer);
+      window.cancelAnimationFrame(repairFrame);
       el.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('pointerup', onPointerUp, true);
       window.removeEventListener('survey-cancel-selection-gesture', cancelSelectionGesture);
