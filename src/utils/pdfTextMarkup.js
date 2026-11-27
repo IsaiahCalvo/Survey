@@ -432,6 +432,169 @@ export function getTextMarkupStackAtPoint(annotations, point, tolerance = 2) {
   });
 }
 
+const HOVERABLE_TEXT_MARKUP_TYPES = new Set([
+  'highlight',
+  'underline',
+  'strikeout',
+  'squiggly',
+  'redact',
+]);
+
+const pointToSegmentDistance = (px, py, ax, ay, bx, by) => {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= 1e-12) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+};
+
+const pointInQuadPolygon = (px, py, q) => {
+  const xs = [q.x1, q.x2, q.x4, q.x3];
+  const ys = [q.y1, q.y2, q.y4, q.y3];
+  let inside = false;
+  for (let i = 0, j = 3; i < 4; j = i, i += 1) {
+    const xi = xs[i];
+    const yi = ys[i];
+    const xj = xs[j];
+    const yj = ys[j];
+    const intersects = ((yi > py) !== (yj > py))
+      && (px < ((xj - xi) * (py - yi)) / (yj - yi) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+};
+
+const pointNearQuad = (px, py, q, tolerance = 0) => {
+  const tol = Math.max(0, Number(tolerance) || 0);
+  const minX = Math.min(q.x1, q.x2, q.x3, q.x4);
+  const maxX = Math.max(q.x1, q.x2, q.x3, q.x4);
+  const minY = Math.min(q.y1, q.y2, q.y3, q.y4);
+  const maxY = Math.max(q.y1, q.y2, q.y3, q.y4);
+  if (px < minX - tol || px > maxX + tol || py < minY - tol || py > maxY + tol) return false;
+  if (pointInQuadPolygon(px, py, q)) return true;
+  if (tol <= 0) return false;
+  return pointToSegmentDistance(px, py, q.x1, q.y1, q.x2, q.y2) <= tol
+    || pointToSegmentDistance(px, py, q.x2, q.y2, q.x4, q.y4) <= tol
+    || pointToSegmentDistance(px, py, q.x4, q.y4, q.x3, q.y3) <= tol
+    || pointToSegmentDistance(px, py, q.x3, q.y3, q.x1, q.y1) <= tol;
+};
+
+const unrotateTextMarkupPoint = (annotation, quads, px, py) => {
+  const angle = Number(annotation?.angle);
+  if (!Number.isFinite(angle) || angle === 0) return { x: px, y: py };
+  let cx;
+  let cy;
+  const left = Number(annotation?.left);
+  const top = Number(annotation?.top);
+  const width = Number(annotation?.width);
+  const height = Number(annotation?.height);
+  if ([left, top, width, height].every(Number.isFinite)) {
+    cx = left + width / 2;
+    cy = top + height / 2;
+  } else {
+    const xs = quads.flatMap((q) => [q.x1, q.x2, q.x3, q.x4]);
+    const ys = quads.flatMap((q) => [q.y1, q.y2, q.y3, q.y4]);
+    cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  }
+  const rad = (-angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = px - cx;
+  const dy = py - cy;
+  return {
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  };
+};
+
+/**
+ * Exact quad/line hit-test for a text-markup annotation in SVG page coordinates.
+ * Matches rendered quad shapes (including padded native highlights) and stroked
+ * underline/strikeout/squiggly lines without falling back to a multi-line bbox.
+ */
+export function isPointOnTextMarkup(
+  annotation,
+  point,
+  { quadTolerance = 1.5, lineTolerance = null } = {},
+) {
+  if (annotation?.data?.type !== 'text-markup' || annotation.visible === false) return false;
+  const rawX = Number(point?.x);
+  const rawY = Number(point?.y);
+  if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) return false;
+  const type = String(annotation.data.markupType || annotation.exportType || '').toLowerCase();
+  if (!HOVERABLE_TEXT_MARKUP_TYPES.has(type)) return false;
+
+  const quads = [];
+  for (const raw of annotation.data.quads || []) {
+    const q = {
+      x1: Number(raw?.x1), y1: Number(raw?.y1),
+      x2: Number(raw?.x2), y2: Number(raw?.y2),
+      x3: Number(raw?.x3), y3: Number(raw?.y3),
+      x4: Number(raw?.x4), y4: Number(raw?.y4),
+    };
+    if ([q.x1, q.y1, q.x2, q.y2, q.x3, q.y3, q.x4, q.y4].every(Number.isFinite)) {
+      quads.push(q);
+    }
+  }
+  if (quads.length === 0) return false;
+
+  const { x: px, y: py } = unrotateTextMarkupPoint(annotation, quads, rawX, rawY);
+  const qTol = Math.max(0, Number(quadTolerance) || 0);
+
+  if (type === 'highlight' || type === 'redact') {
+    const shouldPad = type === 'highlight' && !annotation?.isPdfImported;
+    return quads.some((raw) => {
+      const q = shouldPad ? padTextHighlightQuad(raw) : raw;
+      return pointNearQuad(px, py, q, qTol);
+    });
+  }
+
+  const lineWidth = Number.isFinite(annotation.data.lineWidth)
+    ? Math.max(0, annotation.data.lineWidth)
+    : 1.2;
+  return quads.some((q) => {
+    if (pointNearQuad(px, py, q, qTol)) return true;
+    const rawHeight = Math.hypot(q.x3 - q.x1, q.y3 - q.y1);
+    const height = Math.max(1, rawHeight);
+    const upX = rawHeight > 0.01 ? (q.x1 - q.x3) / rawHeight : 0;
+    const upY = rawHeight > 0.01 ? (q.y1 - q.y3) / rawHeight : -1;
+    const underlineInset = type === 'underline'
+      ? getTextMarkupUnderlineInset(annotation, height, lineWidth)
+      : 0;
+    const startX = type === 'strikeout' ? (q.x1 + q.x3) / 2 : q.x3 + upX * underlineInset;
+    const startY = type === 'strikeout' ? (q.y1 + q.y3) / 2 : q.y3 + upY * underlineInset;
+    const endX = type === 'strikeout' ? (q.x2 + q.x4) / 2 : q.x4 + upX * underlineInset;
+    const endY = type === 'strikeout' ? (q.y2 + q.y4) / 2 : q.y4 + upY * underlineInset;
+    const waveReach = type === 'squiggly'
+      ? Math.max(0.7, Math.min(1.8, height * 0.12))
+      : 0;
+    const effectiveLineTol = lineTolerance != null
+      ? Math.max(0, Number(lineTolerance) || 0)
+      : Math.max(2.5, lineWidth / 2 + 1.5, waveReach + lineWidth / 2 + 0.75);
+    return pointToSegmentDistance(px, py, startX, startY, endX, endY) <= effectiveLineTol;
+  });
+}
+
+/**
+ * Find the top-most interactive text-markup annotation index under a page point.
+ * Accepts either rendered `{ obj, index, isObjectInteractive }` entries or a
+ * raw annotation array; walks in reverse paint order so upper marks win.
+ */
+export function findTextMarkupAtPoint(entries, point, options = {}) {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i];
+    if (!entry) continue;
+    const obj = entry.obj ?? entry;
+    const index = typeof entry.index === 'number' ? entry.index : i;
+    if (entry.isObjectInteractive === false) continue;
+    if (isPointOnTextMarkup(obj, point, options)) return index;
+  }
+  return null;
+}
+
 const textNodesFor = (root) => {
   if (!root || typeof document === 'undefined') return [];
   const walker = document.createTreeWalker(root, globalThis.NodeFilter?.SHOW_TEXT ?? 4);

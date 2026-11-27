@@ -176,6 +176,7 @@ import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
 import {
   buildTextMarkupQuadPathD,
+  findTextMarkupAtPoint,
   getTextMarkupRangeHandlePositions,
   getTextMarkupSelectionChrome,
   padTextHighlightQuad,
@@ -1989,6 +1990,94 @@ const SVGAnnotationLayerBody = memo(({
     // pointer. A move toward a handle arms manipulation synchronously above.
     applyTextSelectPointerOwnership(false);
   }, [activeTool, applyTextSelectPointerOwnership, interactionState, selectedIds, effectiveSelectedCalloutIds, selectedSurveyMarkerId]);
+
+  // Passive text-markup hover in Text Select: .pdfjsTextLayer stays
+  // pointerEvents:auto so native PDF text drag keeps working, which blocks SVG
+  // pointerenter on unselected text markups. Hit-test this page's exact
+  // text-markup quads/lines while idle so highlights, underlines, strikeouts,
+  // squigglies, and redactions light up their existing data-hover-glow outline.
+  const passiveTextSelectHoverRef = useRef(null);
+  useEffect(() => {
+    const clearPassiveHover = () => {
+      const prev = passiveTextSelectHoverRef.current;
+      if (prev == null) return;
+      passiveTextSelectHoverRef.current = null;
+      setHoveredId((current) => (current === prev ? null : current));
+    };
+    const setPassiveHover = (nextIndex) => {
+      const prev = passiveTextSelectHoverRef.current;
+      if (prev === nextIndex) return;
+      passiveTextSelectHoverRef.current = nextIndex;
+      if (nextIndex == null) {
+        setHoveredId((current) => (current === prev ? null : current));
+      } else {
+        setHoveredId(nextIndex);
+      }
+    };
+    if (
+      activeTool !== 'text-select'
+      || interactionState !== 'idle'
+      || textSelectManipulationArmed
+      || textDragModeActive
+    ) {
+      clearPassiveHover();
+      return undefined;
+    }
+    const handlePointerMove = (event) => {
+      if (event.pointerType === 'touch' || event.buttons !== 0) {
+        clearPassiveHover();
+        return;
+      }
+      const root = svgRef.current;
+      if (!root || !root.isConnected || isInTabBehind(root)) {
+        clearPassiveHover();
+        return;
+      }
+      const entries = renderedAnnotationEntriesRef.current;
+      if (!Array.isArray(entries) || entries.length === 0) {
+        clearPassiveHover();
+        return;
+      }
+      const pageDiv = root.closest('[id*="_pageDiv_"]') || root.closest('.survey-pdfjs-page-div');
+      if (pageDiv && typeof Node !== 'undefined' && event.target instanceof Node && !pageDiv.contains(event.target)) {
+        clearPassiveHover();
+        return;
+      }
+      if (event.target?.closest?.('input, textarea, select, button, [contenteditable="true"]')) {
+        clearPassiveHover();
+        return;
+      }
+      const rect = root.getBoundingClientRect?.();
+      if (
+        !rect || rect.width <= 0 || rect.height <= 0
+        || event.clientX < rect.left - 8 || event.clientX > rect.right + 8
+        || event.clientY < rect.top - 8 || event.clientY > rect.bottom + 8
+      ) {
+        clearPassiveHover();
+        return;
+      }
+      if (!root.getScreenCTM?.()) {
+        clearPassiveHover();
+        return;
+      }
+      const svgPoint = screenToSVG(root, event.clientX, event.clientY);
+      const hitIndex = findTextMarkupAtPoint(entries, svgPoint);
+      setPassiveHover(hitIndex);
+    };
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('pointerdown', clearPassiveHover, true);
+    window.addEventListener('blur', clearPassiveHover);
+    document.addEventListener('pointerleave', clearPassiveHover);
+    document.documentElement?.addEventListener('mouseleave', clearPassiveHover);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerdown', clearPassiveHover, true);
+      window.removeEventListener('blur', clearPassiveHover);
+      document.removeEventListener('pointerleave', clearPassiveHover);
+      document.documentElement?.removeEventListener('mouseleave', clearPassiveHover);
+      clearPassiveHover();
+    };
+  }, [activeTool, interactionState, setHoveredId, textDragModeActive, textSelectManipulationArmed]);
 
   const textSelectOwnsPointer = activeTool === 'text-select'
     && (textSelectManipulationArmed || interactionState !== 'idle');
