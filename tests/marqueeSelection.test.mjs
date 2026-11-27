@@ -588,3 +588,52 @@ test('resolveMarqueeHits skips annotations whose bbox lookup throws', () => {
   assert.ok(diags.some((d) => d.reason === 'missing-bbox'));
   assert.deepEqual(result.annotationIndices, [1]);
 });
+
+test('resolveMarqueeHits window (L->R) selects rotated rects, textboxes, stamps, images, and flipped paths tightly around their visible bounds', async () => {
+  const { getAnnotationWorldAABB } = await import('../src/utils/svgBoundingBox.js');
+  const { createProductionPaperInk } = await import('../src/utils/productionPaperInk.js');
+  const { applyPageAffineToInkObject } = await import('../src/utils/inkGeometryTransform.js');
+
+  const pen = createProductionPaperInk({
+    id: 'pen-asym',
+    tool: 'pen',
+    points: [{ x: 100, y: 100 }, { x: 100, y: 180 }, { x: 160, y: 180 }],
+    color: '#ff0000',
+    width: 3,
+  });
+  const penFlipped = applyPageAffineToInkObject(pen, [1, 0, 0, -1, 0, 300]);
+
+  const cases = [
+    ['rect-rotated-45', { type: 'rect', left: 100, top: 100, width: 100, height: 60, angle: 45, strokeWidth: 2 }],
+    ['rect-scaled-rotated', { type: 'rect', left: 100, top: 100, width: 80, height: 50, scaleX: 1.5, scaleY: 0.8, angle: 30, strokeWidth: 2 }],
+    ['textbox-rotated-30', { type: 'textbox', left: 100, top: 100, width: 120, height: 30, angle: 30, text: 'Hello' }],
+    ['stamp-rotated', { type: 'rect', left: 100, top: 100, width: 90, height: 40, angle: 25, data: { pdfStampProxy: { kind: 'image' } } }],
+    ['image-rotated-45', { type: 'image', left: 100, top: 100, width: 120, height: 40, scaleX: 1, scaleY: 1, angle: 45 }],
+    ['pen-flipped', penFlipped],
+  ];
+
+  for (const [label, obj] of cases) {
+    const b = getAnnotationWorldAABB(obj);
+    const tight = { left: b.left - 3, top: b.top - 3, right: b.left + b.width + 3, bottom: b.top + b.height + 3 };
+    const win = resolveMarqueeHits({
+      marqueeRect: tight,
+      direction: 'window',
+      annotations: { objects: [obj] },
+      callouts: [],
+      pageWidth: 1000,
+      pageHeight: 1000,
+    });
+    assert.deepEqual(win.annotationIndices, [0], `${label} must be selected by L->R window marquee`);
+
+    const crs = resolveMarqueeHits({
+      marqueeRect: tight,
+      direction: 'crossing',
+      annotations: { objects: [obj] },
+      callouts: [],
+      pageWidth: 1000,
+      pageHeight: 1000,
+    });
+    assert.deepEqual(crs.annotationIndices, [0], `${label} must be selected by R->L crossing marquee`);
+  }
+});
+

@@ -378,10 +378,13 @@ export function useAnnotationDoc({
   // Open speed (round 5): () => Promise that settles once the viewer has drawn
   // a page of this PDF (see whenFirstPageDrawn in annotationDocSync).
   whenFirstPageDrawn = null,
+  onPreviewLayers = null,
 }) {
   const handleRef = useRef(null);
   const whenFirstPageDrawnRef = useRef(whenFirstPageDrawn);
   whenFirstPageDrawnRef.current = whenFirstPageDrawn;
+  const onPreviewLayersRef = useRef(onPreviewLayers);
+  onPreviewLayersRef.current = onPreviewLayers;
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
   const eraseEffectConsumerProxyRef = useRef(null);
   const onHistoryQuarantineRef = useRef(onHistoryQuarantine);
@@ -653,7 +656,7 @@ export function useAnnotationDoc({
           // the PDF draw its first page before the accepted shadow's decode.
           coldOpenWaitsForFirstPage: isFeatureOn('open-visible-first'),
           lazyAcceptedShadow: isFeatureOn('lazy-accepted-shadow'),
-          onPreview: (previewByPage, { surveyMarkers: previewSurvey = null, spaces: previewSpaces = null } = {}) => {
+          onPreview: (previewByPage, { surveyMarkers: previewSurvey = null, spaces: previewSpaces = null, annotationLayers: previewLayers = null } = {}) => {
             if (cancelled) return;
             if (prePreviewRef.current.byPage === null) {
               prePreviewRef.current = { documentId, byPage: byPageRef.current || {} };
@@ -685,6 +688,11 @@ export function useAnnotationDoc({
                   : projected,
               )
             ));
+            // #1766: hydrate saved layer visibility in the same React batch as
+            // the preview marks so hidden layers never flash during Syncing.
+            if (previewLayers && typeof onPreviewLayersRef.current === 'function') {
+              onPreviewLayersRef.current(previewLayers);
+            }
             // Owner 2026-11-03: Survey markers and spaces paint in the same
             // frame as the other marks (same opening-edits merge as below).
             if (previewSurvey) {

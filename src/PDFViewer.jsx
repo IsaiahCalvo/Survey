@@ -8849,6 +8849,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [surveyMarkers, showSurveyPanel, selectedModuleId]);
   const printableSurveyMarkersRef = useRef(printableSurveyMarkers);
   printableSurveyMarkersRef.current = printableSurveyMarkers;
+  // Tester #1745: when the Survey panel is open, export carries that module's
+  // markers (same set the screen shows). When the user exports from a drawing
+  // with the Survey panel closed, still include the drawing's saved Survey
+  // markers instead of writing an empty surveyMarkers map.
+  const exportableSurveyMarkers = useMemo(() => {
+    if (isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })) {
+      return printableSurveyMarkers;
+    }
+    const result = {};
+    Object.entries(surveyMarkers || {}).forEach(([annotationId, marker]) => {
+      if (!marker?.pageNumber || !marker?.bounds) return;
+      const entry = surveyMarkerRenderEntry(annotationId, marker, normalizeSurveyMarkerColor);
+      result[annotationId] = {
+        ...marker,
+        annotationId,
+        color: entry ? (entry.color || null) : (marker?.color || null),
+        needsEntity: entry ? entry.needsEntity === true : marker?.needsEntity === true,
+      };
+    });
+    return result;
+  }, [printableSurveyMarkers, surveyMarkers, showSurveyPanel, selectedModuleId]);
+  const exportActiveModuleId = isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
+    ? selectedModuleId
+    : (Object.keys(exportableSurveyMarkers).length > 0 ? '*' : null);
   // Same rule for page objects: the screen decides per object with
   // isAnnotationVisibleInSurveyMode (regular markup hidden inside a template,
   // other modules' markers hidden, region-scoped marks untouched). Print gets
@@ -17288,14 +17312,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // edits are out of sight and any tampering is detected on import (malformed →
       // review). That protects identity without breaking the user's sort/filter.
 
+      const { addSummarySheet, surveyExportBaseName } = await import('./services/excelSummarySheet.js');
+      const exportBaseName = surveyExportBaseName({
+        projectName: markLibraryStore.getState().access.projectName || pdfFile?.projectName || '',
+        documentName: pdfDisplayName,
+        templateName: selectedTemplate?.name,
+      });
+
       // Survey agent testers: a Summary sheet on a new export, not on a sync to
       // a linked workbook (Live Sync writes that one's existing sheets cell by cell).
       if (!targetPath) {
-        const [{ isSurveyAgentEnabled }, { addSummarySheet }] = await Promise.all([
-          import('./agent/surveyAgentFlag.js'),
-          import('./services/excelSummarySheet.js'),
-        ]);
-        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers });
+        const { isSurveyAgentEnabled } = await import('./agent/surveyAgentFlag.js');
+        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers, title: exportBaseName });
       }
 
       (await import('./services/excelOpeningSheet.js')).openOnFirstVisibleSheet(workbook);
@@ -17465,7 +17493,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           }
         } else {
           // Export - show location choice modal
-          const fileName = sanitizeFilename(selectedTemplate?.name || 'survey', 'survey');
+          const fileName = sanitizeFilename(exportBaseName, 'survey');
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
@@ -17484,7 +17512,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${sanitizeFilename(selectedTemplate?.name || 'survey', 'survey')}_export.xlsx`;
+        link.download = `${sanitizeFilename(exportBaseName, 'survey')}_export.xlsx`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -17503,7 +17531,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       showToast('Unable to create the Excel file. Please try again.', 'error');
     }
-  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate]);
+  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate, pdfDisplayName, pdfFile]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -22517,6 +22545,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // device-files (Nightly): a PDF opened with no account keeps its marks in
   // the store's device copy under one device actor.
   const annotationActorId = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : (user?.id || null);
+  const previewLayersHandlerRef = useRef(null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22583,6 +22612,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // w33: no one-time store compaction write while the document is locked.
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
+    onPreviewLayers: (value) => previewLayersHandlerRef.current?.(value),
   });
   const offlineCopyToastRef = useRef(null);
   useEffect(() => {
@@ -23022,6 +23052,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [surveyModeToolsOn] = useState(() => isFeatureOn('survey-mode-tools'));
   const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
   const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
+  const prevLayerDocIdRef = useRef(pdfFile?.id);
+  previewLayersHandlerRef.current = (value) => {
+    if (layersEnabled) setLayerState(normalizeLayerState(value));
+  };
+  useEffect(() => {
+    if (prevLayerDocIdRef.current === pdfFile?.id) return;
+    prevLayerDocIdRef.current = pdfFile?.id;
+    setLayerState(DEFAULT_LAYER_STATE);
+    setActiveLayerId(DEFAULT_LAYER_ID);
+  }, [pdfFile?.id]);
   useEffect(() => {
     if (!layersEnabled || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     const apply = (value) => setLayerState(normalizeLayerState(value));
@@ -25115,8 +25155,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
           // Owner ruling 2026-09-02: export = regular markup + the open
           // module's Survey Markers (same set and paint the screen shows).
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           onRedactionsSanitized: (count) => { redactionsSanitizedForExport = count; },
@@ -25207,7 +25247,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25341,7 +25382,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const marks = keep({
           annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
+          surveyMarkers: exportableSurveyMarkers,
         });
         bytes = await savePDFWithAnnotationsPdfLib(
           source,
@@ -25356,7 +25397,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             pageTransformations,
             callouts: marks.callouts,
             surveyMarkers: marks.surveyMarkers,
-            activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+            activeModuleId: exportActiveModuleId,
             spaces,
             deletedPdfAnnotations,
             onRedactionsSanitized: (count) => { redactionsSanitized = count; },
@@ -25408,8 +25449,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pageTransformations,
     pdfFile,
-    printableSurveyMarkers,
     surveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     selectedModuleId,
     showSurveyPanel,
     spaces,
@@ -25432,8 +25474,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25455,7 +25497,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25482,8 +25525,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25505,7 +25548,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -28755,11 +28799,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
-      // Keys belong to an open modal (shortcut sheet, any dialog card): no
-      // tool letters, zoom or Delete acting on the page behind it.
-      // Only a modal that holds focus counts: one still fading out (or
-      // mounted but idle) must not swallow the next tool key.
-      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement) || d.contains(e.target))) return;
+      // Keys belong to an open modal (shortcut sheet, New note, any dialog card):
+      // no tool letters, zoom or Delete acting on the page behind it (#1730).
+      // Only a closing / hidden / inert exit copy is ignored.
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')].some((d) => (
+        !d.closest('[data-motion-state="closing"], [aria-hidden="true"], [inert]')
+        && (d.contains(document.activeElement) || d.contains(e.target) || d.offsetWidth > 0 || d.offsetHeight > 0 || d.getClientRects().length > 0)
+      ))) return;
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =

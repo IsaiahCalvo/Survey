@@ -39,6 +39,9 @@
    after them, so the same layer puts it on top. */
 .annotation-dropdown__popover.value-select__menu {
   z-index: 10000;
+  max-height: min(320px, var(--radix-popover-content-available-height, 45dvh));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .value-select__menu--field .annotation-dropdown__options > button {
@@ -83,6 +86,9 @@
   .value-select__menu--field .annotation-dropdown__options > button {
     min-height: 44px;
     font-size: 16px;
+  }
+  .annotation-dropdown__popover.value-select__menu {
+    max-height: min(240px, var(--radix-popover-content-available-height, 36dvh));
   }
 }
 

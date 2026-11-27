@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { useTooltip } from '../components/Tooltip';
 import { Icon, Avatar, EmptyState } from '../home/HubShell';
 import MenuRows from '../components/MenuRows.jsx';
+import DialogCard, { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from '../components/DialogCard.jsx';
 import DismissBarrier from '../components/DismissBarrier';
 import ValueSelect from '../components/ValueSelect.jsx';
 import SectionIconButton from '../components/SectionIconButton.jsx';
@@ -321,7 +322,7 @@ function ItemDetail({
         <div className="item-links" data-item-links>
           {(item.links || []).map((l) => (
             <div key={l.document_id} className="item-link-row">
-              <button type="button" className="item-link-open" onClick={() => { const d = documents.find((x) => x.id === l.document_id); if (d) onOpenDocument?.(d); }}>
+              <button type="button" className="item-link-open" onClick={() => { const d = documents.find((x) => x.id === l.document_id); if (d) { onClose?.(); onOpenDocument?.(d); } }}>
                 <Icon name="document" size={13} contentType="document" />
                 <span>{docName(l.document_id)}</span>
               </button>
@@ -432,6 +433,8 @@ export default function ProjectItemsPanel({
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState(() => new Set());
   const [menu, setMenu] = useState(null); // { rect, items }
+  const [createDraft, setCreateDraft] = useState(null); // { title: string } | null (#1743)
+  const [createBusy, setCreateBusy] = useState(false);
   const [hiddenIds, setHiddenIds] = useState(() => new Set()); // deleted, Undo still open
   const hideOwnerRef = useRef(new Map()); // id -> the delete that hid it
   const [width, setWidth] = useState(1000);
@@ -454,6 +457,7 @@ export default function ProjectItemsPanel({
   useEffect(() => {
     setOpenId(openItemIdRef.current || null); setSel(new Set()); setSelecting(false); setQ(''); setQuick(new Set());
     setGroups(new Set()); setTagFilter(new Set()); setAssignee('all'); setArchived(false);
+    setCreateDraft(null); setCreateBusy(false);
   }, [project?.id, kind]);
 
   const lookup = useCallback((id) => (lookupMember ? lookupMember(id) : null), [lookupMember]);
@@ -473,14 +477,23 @@ export default function ProjectItemsPanel({
 
   const toggle = (setter) => (key) => setter((cur) => { const n = new Set(cur); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
-  const createItem = async () => {
+  const createItem = () => {
     if (!canEdit) { showToast(`Only editors can add ${k.many.toLowerCase()}.`, 'info'); return; }
-    const res = await data.create(kind, {});
+    setCreateDraft({ title: '' });
+  };
+
+  const submitCreateItem = async (event) => {
+    event?.preventDefault?.();
+    if (createBusy || !createDraft) return;
+    const title = createDraft.title.trim();
+    if (!title) return;
+    setCreateBusy(true);
+    const res = await data.create(kind, { title });
+    setCreateBusy(false);
     if (res.error) { showToast(`Survey could not add the ${k.one.toLowerCase()}. ${res.error}`, 'error'); return; }
+    setCreateDraft(null);
     setArchived(false);
     setOpenId(res.item.id);
-    // Type the summary straight away, as in Drawboard.
-    requestAnimationFrame(() => document.querySelector(`[data-item-detail="${res.item.id}"] [data-testid="item-title"]`)?.focus());
   };
 
   const archiveIds = async (ids) => {
@@ -829,6 +842,36 @@ export default function ProjectItemsPanel({
         document.body,
       ))}
       {menu && <PopMenu anchorRect={menu.rect} items={menu.items} onClose={() => setMenu(null)} />}
+      <DialogCard
+        open={Boolean(createDraft)}
+        as="form"
+        title={`New ${k.one.toLowerCase()}`}
+        ariaLabel={`New ${k.one.toLowerCase()}`}
+        busy={createBusy}
+        onClose={() => { if (!createBusy) setCreateDraft(null); }}
+        cardProps={{ onSubmit: submitCreateItem, 'data-testid': 'new-item-dialog' }}
+        footer={(
+          <>
+            <button type="button" className="hub-btn dialog-touch-pad" disabled={createBusy} onClick={() => setCreateDraft(null)}>Cancel</button>
+            <button type="submit" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={createBusy || !createDraft?.title?.trim()}>
+              {createBusy ? 'Creating…' : `Create ${k.one.toLowerCase()}`}
+            </button>
+          </>
+        )}
+      >
+        <label htmlFor="new-project-item-title" style={DIALOG_LABEL_STYLE}>Title</label>
+        <input
+          id="new-project-item-title"
+          type="text"
+          className="dialog-prompt-input"
+          data-testid="new-item-title"
+          style={DIALOG_FIELD_STYLE}
+          placeholder={`Short ${k.one.toLowerCase()} summary`}
+          value={createDraft?.title || ''}
+          onChange={(e) => setCreateDraft({ title: e.target.value })}
+          maxLength={200}
+        />
+      </DialogCard>
     </div>
   );
 }

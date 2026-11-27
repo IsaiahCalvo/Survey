@@ -232,5 +232,6 @@ test('wiring: Nightly-only entry, job dialog mode, outlines passed', () => {
   assert.match(read('src/home/ProjectsFolderTree.jsx'), /data-project-add-job/);
   const dialog = read('src/home/WalkthruHandoffDialog.jsx');
   assert.match(dialog, /accept="\.kvjob,\.zip,application\/zip"/);
-  assert.match(dialog, /const links = fromJob \? \[\] :/);
+  assert.match(dialog, /loadSavedJobCategoryLinks/);
+  assert.match(dashboard, /saveJobCategoryLinks/);
 });

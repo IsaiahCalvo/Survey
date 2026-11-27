@@ -40,6 +40,7 @@ import {
 } from '../utils/annotationEraseTransaction.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { LAYERS_META_KEY } from '../utils/layers.js';
 import {
   createAnnotationStorageKeyResolver,
   normalizeByPageAnnotationIdentities,
@@ -2448,25 +2449,31 @@ async function emitOpenPreview(state, stage) {
   let byPage;
   let surveyMarkers;
   let spaces;
+  let annotationLayers;
   try {
     // Owner 2026-11-03: every kind of mark shows in the same frame, so the
     // early paint carries the Survey markers and spaces too (they used to
     // wait for the whole open while the other marks were already up).
+    // #1766: include saved annotationLayers in the same preview so hidden
+    // layers stay hidden (and appear in the Layers panel) while Syncing.
     surveyMarkers = docToSurveyMarkers(state.doc);
     spaces = getMetaValue(state.doc, LIVE_SPACES_META_KEY);
+    annotationLayers = getMetaValue(state.doc, LAYERS_META_KEY);
     const hasMarks = getAnnotationsMap(state.doc).size > 0;
     const hasSurvey = !!surveyMarkers && Object.keys(surveyMarkers).length > 0;
     const hasSpaces = Array.isArray(spaces) && spaces.length > 0;
-    if (!hasMarks && !hasSurvey && !hasSpaces) return false;
+    const hasLayers = Boolean(annotationLayers && typeof annotationLayers === 'object');
+    if (!hasMarks && !hasSurvey && !hasSpaces && !hasLayers) return false;
     byPage = hasMarks ? docToByPage(state.doc) : {};
     if (!hasSurvey) surveyMarkers = null;
     if (!hasSpaces) spaces = null;
+    if (!hasLayers) annotationLayers = null;
   } catch (error) {
     console.warn('[annotationDocSync] open preview read failed', error?.message);
     return false;
   }
   try {
-    onPreview(byPage, { stage, surveyMarkers, spaces });
+    onPreview(byPage, { stage, surveyMarkers, spaces, annotationLayers });
   } catch (error) {
     console.warn('[annotationDocSync] open preview failed', error?.message);
     return false;

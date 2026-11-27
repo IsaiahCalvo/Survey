@@ -29,9 +29,37 @@ import {
   EMPTY_FILTER, GROUPINGS, WITHIN_OPTIONS, filterIsEmpty, filterPhotos, groupPhotos, photoFileName, shownPath, uploadedOn,
 } from './projectPhotos.js';
 import { downloadPhotoBlob, useProjectPhotos } from './projectPhotosData.js';
+import Spinner from '../components/Spinner';
 import './projectPhotos.css';
 
 const canEditRole = (role) => role === 'owner' || role === 'editor';
+
+/** Photo thumbnail that keeps a subtle spinner visible until the signed URL
+    arrives and the image finishes loading, avoiding dead grey tiles (#1749). */
+function PhotoThumb({ src, eager = false, draggable = undefined }) {
+  const [loadedSrc, setLoadedSrc] = useState(null);
+  const ready = Boolean(src) && loadedSrc === src;
+  return (
+    <>
+      {!ready && (
+        <span className="photo-tile-wait" role="status" aria-label="Loading photo">
+          <Spinner size={14} color="var(--text-3)" />
+        </span>
+      )}
+      {src && (
+        <img
+          src={src}
+          alt=""
+          loading={eager ? 'eager' : 'lazy'}
+          draggable={draggable}
+          className={ready ? 'is-ready' : 'is-loading'}
+          onLoad={() => setLoadedSrc(src)}
+          onError={() => setLoadedSrc(src)}
+        />
+      )}
+    </>
+  );
+}
 
 /** Images from a paste or a drop. */
 export function imageFilesFrom(dataTransfer) {
@@ -382,7 +410,7 @@ export default function ProjectPhotosPanel({ project, user, role, lookupMember, 
                   return (
                     <div key={p.id} className={`photo-tile${on ? ' is-selected' : ''}`} data-photo-tile={p.id}>
                       <button type="button" className="photo-tile-open" aria-label={`Open photo from ${uploadedOn(p.created_at)}`} onClick={() => setViewIndex(idx)}>
-                        {url ? <img src={url} alt="" loading="lazy" draggable={false} /> : <span className="photo-tile-wait" />}
+                        <PhotoThumb src={url} eager={idx < 12} draggable={false} />
                       </button>
                       <span {...checkboxProps(on, () => toggleSel(p.id), 'Select photo')} onClick={() => toggleSel(p.id)} className={`photo-check photo-tile-check${on ? ' is-on' : ''}`}>{on && <Icon name="check" size={10} />}</span>
                       <button type="button" className="photo-tile-download" aria-label="Download photo" onClick={() => downloadPhotos([p], project?.name)} {...tip('Download')}><Icon name="download" size={12} /></button>
@@ -449,7 +477,7 @@ function GalleryPicker({ photos, urls, already, onPick, onClose }) {
                 className={`photo-tile photo-tile--pick${on ? ' is-selected' : ''}`}
                 onClick={() => setSel((cur) => { const n = new Set(cur); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })}
               >
-                {url ? <img src={url} alt="" loading="lazy" /> : <span className="photo-tile-wait" />}
+                <PhotoThumb src={url} />
                 <span className={`photo-check photo-tile-check${on ? ' is-on' : ''}`} aria-hidden>{on && <Icon name="check" size={10} />}</span>
               </button>
             );
@@ -505,7 +533,7 @@ export function ItemPhotos({ project, item, canEdit, lookupMember }) {
           return (
             <div key={p.id} className="item-photo" data-item-photo={p.id}>
               <button type="button" className="photo-tile-open" aria-label="Open photo" onClick={() => setViewIndex(i)}>
-                {url ? <img src={url} alt="" loading="lazy" /> : <span className="photo-tile-wait" />}
+                <PhotoThumb src={url} eager={i < 8} />
               </button>
               {canEdit && (
                 <button type="button" className="item-photo-remove" aria-label="Remove photo from this item" onClick={() => data.unlink(p.id, item.id)} {...tip('Remove from item')}><Icon name="close" size={9} /></button>
