@@ -16,6 +16,7 @@ import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.
 import { resolveAnnotationAt } from './annotationHitTest.js';
 import { selectionUsesPdfTextLayer } from './pdfNativeTextInteraction.js';
 import { isTypingTarget } from './listContextMenu.js';
+import { isInTabBehind, queryFrontTab } from './tabBehind.js';
 
 /**
  * w56 (live two-user test 2026-09-28): right-clicking a mark that is PART of
@@ -278,6 +279,7 @@ function diag(line) {
     // Ordinary clicks keep the ink-accurate hit test used by the canvas.
     if (hit.kind === 'page') {
       for (const frame of document.querySelectorAll('[data-selection-context-index]')) {
+        if (isInTabBehind(frame)) continue;
         const box = frame.querySelector('[data-selection-context-hitbox]')?.getBoundingClientRect();
         if (!box || box.width <= 0 || box.height <= 0 || e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom) continue;
         const wrapper = frame.closest('[data-diag-svg-wrapper]');
@@ -289,7 +291,7 @@ function diag(line) {
     const { pageNumber } = hit;
     let { annotationIndex, calloutId, kind, groupIndices } = hit;
     const groupBox = pageNumber != null
-      ? document.querySelector(`[data-svg-annotation-layer="${pageNumber}"] [data-group-selection-bbox="true"]`)
+      ? queryFrontTab(`[data-svg-annotation-layer="${pageNumber}"] [data-group-selection-bbox="true"]`)
       : null;
     // w56: a right-click on a selected member of a multi-selection opens the
     // selection's menu (see groupMenuForSelectedMember).

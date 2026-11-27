@@ -963,7 +963,35 @@ export function useSVGInteraction({
   // ---------------------------------------------------------------------------
   // Selection manipulation
   // ---------------------------------------------------------------------------
-  const selectAnnotation = useCallback((index, addToSelection = false) => {
+  // Latest group-selection helpers for selectAnnotation({ expandGroup: true })
+  // without changing selectAnnotation's stable identity (SVGAnnotationLayer's
+  // pendingSelection effect depends on it).
+  const groupSelectContextRef = useRef(null);
+  const selectAnnotation = useCallback((index, addToSelection = false, { expandGroup = false } = {}) => {
+    const ctx = expandGroup ? groupSelectContextRef.current : null;
+    const gid = ctx ? getAnnotationGroupId(ctx.annotations?.objects?.[index]) : null;
+    if (gid) {
+      const pageCallouts = filterSelectableCallouts(ctx.callouts, ctx.isCalloutSelectable);
+      const members = findGroupMembers(ctx.annotations, pageCallouts, [gid]);
+      const memberIndices = members.annotationIndices.filter((mi) => ctx.canSelectAnnotationByIndex(mi));
+      if (memberIndices.length > 0 || members.calloutIds.length > 0) {
+        setSelectedIds((prev) => {
+          const next = addToSelection ? new Set(prev) : new Set();
+          memberIndices.forEach((mi) => next.add(mi));
+          return next;
+        });
+        if (typeof ctx.onSelectedCalloutIdsChange === 'function') {
+          if (addToSelection) {
+            const nextCallouts = new Set(ctx.selectedCalloutIds instanceof Set ? ctx.selectedCalloutIds : []);
+            members.calloutIds.forEach((cid) => nextCallouts.add(cid));
+            ctx.onSelectedCalloutIdsChange(nextCallouts);
+          } else {
+            ctx.onSelectedCalloutIdsChange(new Set(members.calloutIds));
+          }
+        }
+        return;
+      }
+    }
     setSelectedIds((prev) => {
       if (addToSelection) {
         const next = new Set(prev);
@@ -1183,6 +1211,14 @@ export function useSVGInteraction({
     if (!viewerId || !documentOwnerId) return true;
     return canSelect({ annotation: a, viewerId, documentOwnerId });
   }, [annotations, viewerId, documentOwnerId]);
+  groupSelectContextRef.current = {
+    annotations,
+    callouts,
+    isCalloutSelectable,
+    canSelectAnnotationByIndex,
+    onSelectedCalloutIdsChange,
+    selectedCalloutIds,
+  };
 
   // ---------------------------------------------------------------------------
   // w52 (2026-09-28) — arrow-key nudge for the current selection
