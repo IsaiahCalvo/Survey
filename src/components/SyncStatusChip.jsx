@@ -219,6 +219,7 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detail
   return (
     <div
       role="button"
+      data-sync-status-chip=""
       // Owner 2026-10-02: a chrome icon - it hovers and presses like every
       // rail icon (src/styles/states.css section 5), never with a plate. The
       // class (not data-glyph-only) marks it.
@@ -226,7 +227,7 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detail
       aria-live="polite"
       aria-label={accessibleLabel}
       aria-expanded={detailsOpen}
-      aria-controls="sync-status-details"
+      aria-controls={detailsOpen ? 'sync-status-details' : undefined}
       tabIndex={0}
       onClick={onActivate}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
@@ -272,10 +273,11 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detai
   return (
     <div
       role="button"
+      data-sync-status-chip=""
       aria-live="polite"
       aria-label={accessibleLabel}
       aria-expanded={detailsOpen}
-      aria-controls="sync-status-details"
+      aria-controls={detailsOpen ? 'sync-status-details' : undefined}
       tabIndex={0}
       onClick={onActivate}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}

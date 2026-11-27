@@ -2878,7 +2878,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 .mobile-tool-sheet__slider:focus-visible .mobile-tool-sheet__track {
-  box-shadow: 0 0 0 2px var(--sheet-bg), 0 0 0 4px var(--focus-ring, var(--text-2));
+  box-shadow: 0 0 0 2px var(--sheet-bg), 0 0 0 4px var(--focus, var(--text-2));
 }
 
 .mobile-tool-sheet__track {

@@ -786,13 +786,13 @@ html[data-look="suite"] .btn {
    selected one. Hover is --hover; an OPEN pill is showing its menu, which is a
    selected state, so it takes --surface-3 like every other selected thing. */
 @media (hover: hover) {
-  .chrome-pill:hover {
+  .chrome-pill:hover:not(:disabled):not([aria-disabled='true']):not(:active) {
     color: var(--text-1);
     background: var(--hover);
   }
 }
 
-.chrome-pill:active {
+.chrome-pill:not(:disabled):not([aria-disabled='true']):active {
   background: var(--pressed);
 }
 /* The press is one step past the hover: --pressed-2 (the app-wide press
@@ -1099,7 +1099,7 @@ html[data-look='suite'] .chrome-pill[data-state='open'] { background: var(--surf
 }
 
 @media (hover: hover) {
-  .survey-subrow__template .chrome-pill:hover {
+  .survey-subrow__template .chrome-pill:hover:not(:disabled):not([aria-disabled='true']):not(:active) {
     background: var(--hover);
   }
 }
@@ -4012,7 +4012,7 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   transition: none;
 }
 .pages-panel-more:focus-visible > span {
-  box-shadow: 0 0 0 2px var(--focus-ring, var(--text-2));
+  box-shadow: 0 0 0 2px var(--focus, var(--text-2));
 }
 @media (prefers-reduced-motion: reduce) {
   .pages-panel-more > span { transition: none; }
@@ -4064,7 +4064,7 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
 }
 /* Keyboard: a focused card shows where focus is (it is the drag target). */
 [data-page-card]:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--text-2));
+  outline: 2px solid var(--focus, var(--text-2));
   outline-offset: -2px;
 }
 

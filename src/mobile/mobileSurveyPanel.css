@@ -308,7 +308,7 @@
   font: inherit;
 }
 
-.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:active { background: var(--pressed); }
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:not(:disabled):active { background: var(--pressed); }
 /* Off: the one --text-disabled ink (tokens.css), on the words and the meta
    line alike, never a fade. */
 .mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled,

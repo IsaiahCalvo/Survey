@@ -3416,7 +3416,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               className="mobile-pdf-tools__sync"
               aria-label={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. ${sync.compactMessage}`}
               aria-expanded={sync.state !== 'synced' && syncDetailsOpen}
-              aria-controls="mobile-sync-status-details"
+              aria-controls={sync.state !== 'synced' && syncDetailsOpen ? 'mobile-sync-status-details' : undefined}
               // The desktop chip's hover hint is the bare label; so is this.
               {...tip(sync.label, 'left')}
               disabled={leftRailApi?.cloudSyncEnabled === false}

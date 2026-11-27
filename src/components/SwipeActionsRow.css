@@ -64,7 +64,7 @@
   outline: none;
 }
 .swipe-row__layer:focus-visible {
-  outline: 2px solid var(--focus-ring, currentColor);
+  outline: 2px solid currentColor;
   outline-offset: -4px;
 }
 /* A zero-width point on the block's inner edge; the script moves it to the

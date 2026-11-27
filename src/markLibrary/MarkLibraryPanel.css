@@ -146,12 +146,10 @@ html[data-look="suite"] .mark-library__tabs { background: var(--surface-2); }
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px;
+  padding: 0;
   border-radius: 8px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  cursor: grab;
   user-select: none;
   touch-action: pan-y;
   min-width: 0;
@@ -160,10 +158,36 @@ html[data-look="suite"] .mark-library__tabs { background: var(--surface-2); }
 .mark-library__tile--list {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: 4px;
+  padding: 0 4px 0 0;
   border-color: transparent;
   background: transparent;
+}
+
+.mark-library__trigger {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+  user-select: none;
+}
+
+.mark-library__tile--list .mark-library__trigger {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
 }
 
 .mark-library__tile.is-armed,
@@ -174,7 +198,8 @@ html[data-look="suite"] .mark-library__tabs { background: var(--surface-2); }
   .mark-library__tile:not(.is-armed):not(.is-selected):hover { background: var(--hover); }
 }
 
-.mark-library__tile:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.mark-library__tile:focus-visible,
+.mark-library__trigger:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 .mark-library__thumb {
   display: flex;
