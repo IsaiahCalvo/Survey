@@ -34,6 +34,7 @@ function parseHeaders(text) {
 
 const dist = makeDist([
   'index.html', '404.html', 'privacy.html', 'favicon.svg', 'paintWorker.js',
+  'robots.txt', 'sitemap.xml', 'favicon.ico', 'kal-voe/static/suite.css',
   'assets/app-1.js', 'assets/app-1.css', 'ocr/eng.traineddata',
   'welcome/index.html', 'welcome/hero.png', 'tools/redact/index.html',
   '.well-known/assetlinks.json',
@@ -51,6 +52,11 @@ test('static files skip the middleware; pages, routes and well-known do not', as
     assert.ok(!routes.exclude.includes(kept), `${kept} must still run the middleware`);
   }
   assert.ok(!routes.exclude.some((r) => r.includes('.well-known')));
+  // kalvoe.com serves its own robots.txt, sitemap and favicon through the middleware.
+  for (const perHost of ['/robots.txt', '/sitemap.xml', '/favicon.ico']) {
+    assert.ok(!routes.exclude.includes(perHost), `${perHost} must still run the middleware`);
+  }
+  assert.ok(routes.exclude.includes('/kal-voe/static/suite.css'));
   assert.ok(routes.include.length + routes.exclude.length <= 100);
   assert.ok(routes.exclude.every((r) => r.length <= 100));
 });
