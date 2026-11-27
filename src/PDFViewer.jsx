@@ -8849,6 +8849,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [surveyMarkers, showSurveyPanel, selectedModuleId]);
   const printableSurveyMarkersRef = useRef(printableSurveyMarkers);
   printableSurveyMarkersRef.current = printableSurveyMarkers;
+  // Tester #1745: when the Survey panel is open, export carries that module's
+  // markers (same set the screen shows). When the user exports from a drawing
+  // with the Survey panel closed, still include the drawing's saved Survey
+  // markers instead of writing an empty surveyMarkers map.
+  const exportableSurveyMarkers = useMemo(() => {
+    if (isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })) {
+      return printableSurveyMarkers;
+    }
+    const result = {};
+    Object.entries(surveyMarkers || {}).forEach(([annotationId, marker]) => {
+      if (!marker?.pageNumber || !marker?.bounds) return;
+      const entry = surveyMarkerRenderEntry(annotationId, marker, normalizeSurveyMarkerColor);
+      result[annotationId] = {
+        ...marker,
+        annotationId,
+        color: entry ? (entry.color || null) : (marker?.color || null),
+        needsEntity: entry ? entry.needsEntity === true : marker?.needsEntity === true,
+      };
+    });
+    return result;
+  }, [printableSurveyMarkers, surveyMarkers, showSurveyPanel, selectedModuleId]);
+  const exportActiveModuleId = isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
+    ? selectedModuleId
+    : (Object.keys(exportableSurveyMarkers).length > 0 ? '*' : null);
   // Same rule for page objects: the screen decides per object with
   // isAnnotationVisibleInSurveyMode (regular markup hidden inside a template,
   // other modules' markers hidden, region-scoped marks untouched). Print gets
@@ -25115,8 +25139,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
           // Owner ruling 2026-09-02: export = regular markup + the open
           // module's Survey Markers (same set and paint the screen shows).
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           onRedactionsSanitized: (count) => { redactionsSanitizedForExport = count; },
@@ -25207,7 +25231,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25229,7 +25254,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       currentPage: pageNum,
       marked: pagesWithMarks({
         annotationsByPage: shown,
-        surveyMarkers: printableSurveyMarkers,
+        surveyMarkers: exportableSurveyMarkers,
       }),
     };
     if (!exportFiltersEnabled) return info;
@@ -25251,12 +25276,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     };
     return {
       ...info,
-      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: printableSurveyMarkers })
+      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: exportableSurveyMarkers })
         .map((a) => ({ ...a, name: nameOf(a.id) })),
       layers: layersEnabled ? filters.exportLayers({ annotationsByPage: shown }, layerState) : [],
       commentCount: comments.filter((c) => !c.deletedAt).length,
     };
-  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, exportableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
 
   // Comments (.csv) beside the exported PDF (export filters).
   const exportCommentsCsv = useCallback(async () => {
@@ -25312,7 +25337,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               showSurveyPanel,
               selectedModuleId,
             })),
-            surveyMarkers: printableSurveyMarkers,
+            surveyMarkers: exportableSurveyMarkers,
           }),
           spaces,
         });
@@ -25333,7 +25358,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const marks = keep({
           annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
+          surveyMarkers: exportableSurveyMarkers,
         });
         bytes = await savePDFWithAnnotationsPdfLib(
           source,
@@ -25348,7 +25373,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             pageTransformations,
             callouts: marks.callouts,
             surveyMarkers: marks.surveyMarkers,
-            activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+            activeModuleId: exportActiveModuleId,
             spaces,
             deletedPdfAnnotations,
             onRedactionsSanitized: (count) => { redactionsSanitized = count; },
@@ -25400,7 +25425,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pageTransformations,
     pdfFile,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     selectedModuleId,
     showSurveyPanel,
     spaces,
@@ -25423,8 +25449,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25446,7 +25472,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25473,8 +25500,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25496,7 +25523,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
