@@ -22,7 +22,8 @@ import Spinner from '../components/Spinner';
 import { Z_INDEX } from '../theme';
 import { matchCategories } from '../suite/walkthruHandoff.js';
 import {
-  canAddToModule, categoryForPicks, keepPicks, linkedRows, linkRows, linksToSave, moduleCategories, startingPicks,
+  canAddToModule, categoryForPicks, keepPicks, linkedRows, linkRows, linksToSave,
+  loadSavedJobCategoryLinks, moduleCategories, startingPicks,
 } from '../suite/categoryLinks.js';
 import '../components/PdfToolsDialog.css';
 import '../components/ExportPdfDialog.css';
@@ -56,7 +57,10 @@ export function handoffSummary(result) {
       : `${plural(result.defaultNodes, 'item')} with no Category stayed in ${result.source}`);
   }
   const links = result.links?.saved?.length || 0;
-  if (links) parts.push(`${plural(links, 'Category link')} saved for the next walk`);
+  if (links) {
+    const nextLabel = result.source && result.source !== 'Walkthru' ? 'job' : 'walk';
+    parts.push(`${plural(links, 'Category link')} saved for the next ${nextLabel}`);
+  }
   return `${parts.join('. ')}.`;
 }
 
@@ -129,7 +133,16 @@ export default function WalkthruHandoffDialog({
     for (const f of walk?.floors || []) for (const n of f.nodes) if (n.node_type_id) counts.set(n.node_type_id, (counts.get(n.node_type_id) || 0) + 1);
     return counts;
   }, [walk]);
-  const match = useMemo(() => (template && moduleId ? matchCategories(usedTypes, template, moduleId) : null), [usedTypes, template, moduleId]);
+  const savedJobLinks = useMemo(
+    () => (fromJob && templateId && moduleId ? loadSavedJobCategoryLinks(templateId, moduleId) : null),
+    [fromJob, templateId, moduleId, walkId],
+  );
+  const match = useMemo(
+    () => (template && moduleId
+      ? matchCategories(usedTypes, template, moduleId, fromJob ? { allowPlural: true, savedLinks: savedJobLinks } : undefined)
+      : null),
+    [usedTypes, template, moduleId, fromJob, savedJobLinks],
+  );
 
   const rows = useMemo(() => linkRows(match, nodeCount), [match, nodeCount]);
   // Only an exact-name match starts filled in; the user picks the rest. A
@@ -165,7 +178,7 @@ export default function WalkthruHandoffDialog({
     setError('');
     setBusy(true);
     try {
-      const links = fromJob ? [] : linksToSave(rows, picks, template, moduleId);
+      const links = linksToSave(rows, picks, template, moduleId);
       const out = await onSend({ walk, template, moduleId, categoryFor, links });
       if (alive.current) setResult(out);
     } catch (err) {
@@ -290,11 +303,18 @@ export default function WalkthruHandoffDialog({
               <div className="xpdf-section" data-walkthru-handoff-match="">
                 <span className="xpdf-label">Categories</span>
                 {usedTypes.length === 0 && <span>{fromJob ? 'This job file has no devices with a Category.' : 'This walk has no nodes with a Category.'}</span>}
-                {linkedRows(match, usedTypes, nodeCount, template, moduleId).map((item) => (
-                  <div key={item.nodeTypeId} className="wt-link__linked">
-                    {item.name} ({item.count}): {item.categoryName ? `linked in the library as ${item.categoryName}` : 'linked in the library'}
-                  </div>
-                ))}
+                {linkedRows(match, usedTypes, nodeCount, template, moduleId).map((item) => {
+                  const type = usedTypes.find((t) => t.id === item.nodeTypeId);
+                  const viaLibrary = Boolean(type?.library_entry_id) || !fromJob;
+                  const statusLabel = viaLibrary
+                    ? (item.categoryName ? `linked in the library as ${item.categoryName}` : 'linked in the library')
+                    : (item.categoryName ? `remembered for this Module as ${item.categoryName}` : 'remembered for this Module');
+                  return (
+                    <div key={item.nodeTypeId} className="wt-link__linked">
+                      {item.name} ({item.count}): {statusLabel}
+                    </div>
+                  );
+                })}
                 {rows.length > 0 && (
                   <div className="wt-link" role="table" aria-label={fromJob ? `Link ${walk?.source || 'job file'} Categories to this Module` : 'Link Walkthru Categories to this Module'} data-walkthru-link-table="">
                     <div className="wt-link__row wt-link__row--head" role="row">
@@ -331,7 +351,7 @@ export default function WalkthruHandoffDialog({
                       </div>
                     ))}
                     <p className="wt-link__note">{fromJob
-                      ? 'These links are used for this file.'
+                      ? 'Links you keep are remembered for this Module, so the next job file uses them without asking.'
                       : 'A link you keep is saved to the library, so the next walk uses it without asking.'}</p>
                   </div>
                 )}
