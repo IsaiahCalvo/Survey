@@ -271,7 +271,7 @@ test('pan quick-pick leaves a saved Text Select mode in truthful rectangle objec
 
   const quickPickHandler = PDF_VIEWER_SOURCE.slice(
     PDF_VIEWER_SOURCE.indexOf('// UX: pan-mode quick-click → select annotation'),
-    PDF_VIEWER_SOURCE.indexOf('// UX: pan-mode hover —'),
+    PDF_VIEWER_SOURCE.indexOf('// UX: position-based hover halo'),
   );
   // Owner 2026-10-02 (Drawboard rule 2): a Pan click picks the mark and Pan
   // STAYS armed — the quick-pick no longer switches to Select.
@@ -418,9 +418,15 @@ test('rule 2: Select / Pan pick any mark; group tools pick their own group; the 
   // DELIBERATE ASSERTION CHANGE (owner 2026-10-14, reversing 10-13; Drawboard
   // measured: its Pan shows the blue halo over a mark): Pan shows the halo
   // again, but still no pointer hand - the grab hand stays (P7).
-  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'eraser' \|\| activeTool === 'pan'\s*\|\| \(shouldShowHoverHalo\(activeTool\) && activeTool !== 'pan'/);
+  // DELIBERATE ASSERTION CHANGE (#1796 / KAL-843): Text Select is the same
+  // pointer-inert case as Pan, so it is no longer excluded from this halo.
+  // Rectangle Select still paints hover from live SVG pointer events.
+  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'eraser' \|\| activeTool === 'pan'\s*\|\| \(shouldShowHoverHalo\(activeTool\) && activeTool !== 'pan' && activeTool !== 'select'\);/);
+  assert.doesNotMatch(PDF_VIEWER_SOURCE, /shouldShowHoverHalo\(activeTool\) && activeTool !== 'pan' && activeTool !== 'select' && activeTool !== 'text-select'/);
   assert.doesNotMatch(PDF_VIEWER_SOURCE, /const pointerCursor = activeTool === 'pan'/);
   assert.match(PDF_VIEWER_SOURCE, /shouldShowHoverHalo\(activeTool, hit\?\.kind === 'callout'\s*\? CALLOUT_MARK_GROUP\s*: getMarkGroup\(/);
+  assert.equal(rules.shouldShowHoverHalo('text-select'), true);
+  assert.equal(rules.shouldShowHoverHalo('select'), true);
 });
 
 test('rule 3: a drag is the tool\'s own job unless it starts on a selection the tool may grab', () => {
