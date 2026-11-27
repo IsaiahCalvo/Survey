@@ -292,7 +292,13 @@ import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { isRefusedAnnotationDelete, reportAnnotationDeleteOutcome } from './services/annotationDeleteOutcome.js';
-import { createPresenceActivityBump, PRESENCE_ACTIVITY_EVENTS } from './utils/presenceActivity.js';
+import {
+  createPresenceActivityBump,
+  isPresenceDocumentVisible,
+  PRESENCE_ACTIVITY_EVENTS,
+  PRESENCE_PAGE_CHANGE_DEBOUNCE_MS,
+  shouldSkipDuplicatePresenceWrite,
+} from './utils/presenceActivity.js';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
@@ -21385,6 +21391,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const documentSyncInitInFlightRef = useRef(false); // Prevent duplicate init work for same document
   const surveyHydrationRequestSeqRef = useRef(0);
   const initialPresenceSucceededRef = useRef(false); // Only send page-presence updates after initial success
+  const lastPresenceWriteRef = useRef({ documentId: null, page: null, at: 0 }); // Dedupe open + page-change writes
 
   const handlePresenceFailure = useCallback((presenceResult, context = 'presence') => {
     if (!presenceResult || presenceResult.success) return false;
@@ -21590,14 +21597,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             if (syncRLSErrorShownRef.current || presenceAutoDisabledRef.current) {
               return;
             }
+            const deferredPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum;
             const deferredPresenceResult = await updateDocumentPresence(documentId, user.id, {
               clientType: 'app',
               displayName: presenceDisplayName(user),
-              currentPage: coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum
+              currentPage: deferredPage
             });
 
             if (deferredPresenceResult.success) {
               initialPresenceSucceededRef.current = true;
+              lastPresenceWriteRef.current = { documentId, page: deferredPage, at: Date.now() };
               syncStructuralAutoDisabledRef.current = false;
               writeDocumentSyncStructuralDisabled(false);
               setDocumentSyncEnabled(true);
@@ -21615,14 +21624,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           return;
         }
 
+        const initialPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum;
         const presenceResult = await updateDocumentPresence(documentId, user.id, {
           clientType: 'app',
           displayName: presenceDisplayName(user),
-          currentPage: coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum
+          currentPage: initialPage
         });
 
         if (presenceResult.success) {
           initialPresenceSucceededRef.current = true;
+          lastPresenceWriteRef.current = { documentId, page: initialPage, at: Date.now() };
           syncStructuralAutoDisabledRef.current = false;
           writeDocumentSyncStructuralDisabled(false);
           setDocumentSyncEnabled(true);
@@ -21665,6 +21676,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (deferredInitialPresenceTimer) {
         clearTimeout(deferredInitialPresenceTimer);
       }
+      lastPresenceWriteRef.current = { documentId: null, page: null, at: 0 };
       removeDocumentPresence(documentId, user.id, 'app');
     };
     // 2026-04-26 — `pageNum` removed from the deps. With pageNum included,
@@ -23386,8 +23398,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
     let cancelled = false;
     let deferredTimer = null;
+    let pageDebounceTimer = null;
+    let activityBump = null;
 
     const runPresenceUpdate = async () => {
+      if (!isPresenceDocumentVisible()) return;
       const presenceResult = await updateDocumentPresence(documentId, user.id, {
         clientType: 'app',
         displayName: presenceDisplayName(user),
@@ -23397,6 +23412,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (cancelled) return;
 
       if (presenceResult.success) {
+        const writtenAt = Date.now();
+        lastPresenceWriteRef.current = { documentId, page: pageNum, at: writtenAt };
+        activityBump?.noteWrite(writtenAt);
         setPresenceDebugStatus({
           status: 'active',
           disabled: false,
@@ -23409,7 +23427,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     };
 
     const schedulePresenceUpdate = () => {
-      if (deferredTimer) return;
+      if (deferredTimer || !isPresenceDocumentVisible()) return;
       if (isInteractionPerfWindowActive()) {
         const retryDelay = getInteractionPerfResumeDelay();
         emitPdfDebugEvent('sync_gate_presence_deferred', { retryDelay });
@@ -23423,19 +23441,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     };
 
-    schedulePresenceUpdate();
-
     // 2026-10-06: also refresh while the person works on this page (throttled,
     // input-driven, no timer), so other viewers keep showing them as here
     // instead of dropping them after 2 minutes on one page.
     // See utils/presenceActivity.js.
     // Background tabs stay mounted: only the front tab's input counts
     // (undoRedoKeyActiveRef mirrors this tab's isActive prop).
-    const activityBump = createPresenceActivityBump({
+    activityBump = createPresenceActivityBump({
       onBump: schedulePresenceUpdate,
       isActive: () => undoRedoKeyActiveRef.current !== false,
     });
-    activityBump.noteWrite();
+
+    const nowMs = Date.now();
+    if (shouldSkipDuplicatePresenceWrite(lastPresenceWriteRef.current, { documentId, page: pageNum }, nowMs)) {
+      activityBump.noteWrite(lastPresenceWriteRef.current.at);
+    } else {
+      if (lastPresenceWriteRef.current.documentId === documentId && lastPresenceWriteRef.current.at > 0) {
+        activityBump.noteWrite(lastPresenceWriteRef.current.at);
+      } else {
+        activityBump.noteWrite(nowMs);
+      }
+      pageDebounceTimer = setTimeout(() => {
+        pageDebounceTimer = null;
+        if (cancelled) return;
+        schedulePresenceUpdate();
+      }, PRESENCE_PAGE_CHANGE_DEBOUNCE_MS);
+    }
+
     const onPresenceActivity = () => { activityBump.onActivity(); };
     for (const type of PRESENCE_ACTIVITY_EVENTS) {
       window.addEventListener(type, onPresenceActivity, { capture: true, passive: true });
@@ -23445,6 +23477,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       cancelled = true;
       for (const type of PRESENCE_ACTIVITY_EVENTS) {
         window.removeEventListener(type, onPresenceActivity, { capture: true });
+      }
+      if (pageDebounceTimer) {
+        clearTimeout(pageDebounceTimer);
       }
       if (deferredTimer) {
         clearTimeout(deferredTimer);
