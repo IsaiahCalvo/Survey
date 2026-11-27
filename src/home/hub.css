@@ -1079,9 +1079,15 @@
        are all 28px, so centring them makes the rows read as rows. The title and
        the count opt back out to `baseline` below, because 22px type and 11.5px
        type sitting on one baseline is what makes them look like one line
-       rather than two things that happen to be next to each other. */
+       rather than two things that happen to be next to each other.
+       Grid (not flex-wrap) keeps row 1 on a single line even for long drilled
+       project names so the title truncates instead of wrapping Select/avatar or
+       clipping the file count to "1…" (#1824). */
+    display: grid;
+    grid-template-columns: minmax(0, auto) 1fr auto auto;
+    grid-template-rows: var(--mobile-header-row-h);
+    grid-auto-rows: auto;
     align-items: center;
-    flex-wrap: wrap;
     gap: var(--mobile-header-row-gap) 8px;
     padding: var(--mobile-header-pad-y) var(--mobile-header-pad-x);
     /* A phone held sideways puts the notch over a screen edge: the scroll
@@ -1112,6 +1118,8 @@
 
   .survey-hub .header-title-block .title {
     order: 1;
+    grid-column: 1;
+    grid-row: 1;
     flex: none;
     min-width: 0;
     align-self: baseline;
@@ -1132,6 +1140,8 @@
   .survey-hub .mobile-rail-nav {
     display: none;
     order: 1;
+    grid-column: 1;
+    grid-row: 1;
     flex: 0 1 auto;
     min-width: 0;
     align-self: baseline;
@@ -1318,6 +1328,8 @@
      the flattened .documents-mobile-summary and is excluded here.) */
   .survey-hub .header-subtitle > span:not(.documents-mobile-summary):not(.projects-mobile-summary):not(.templates-mobile-summary):not(.archive-mobile-summary) {
     order: 1;
+    grid-column: 2;
+    grid-row: 1;
     flex: 1 1 auto;
     min-width: 0;
     align-self: baseline;
@@ -1351,25 +1363,22 @@
   }
 
   /* The count is quiet grey text that shares the title's baseline — the fact,
-     not a heading of its own. It yields first when the row runs out of room.
-     It also takes the row's slack (flex-grow), which is what holds the avatar
-     against the right edge on a screen that has no Select — an open template,
-     say. When Select IS there its own auto margin claims the slack first, so
-     the count stays tight against the title. */
+     not a heading of its own. Keeping min-width: max-content in the header's
+     1fr column ensures short counts ("1 file", "12 files") never clip to "1…"
+     while a long drilled project title truncates cleanly in column 1 (#1824). */
   .survey-hub .documents-file-count,
   .survey-hub .projects-mobile-count,
   .survey-hub .templates-mobile-count,
   .survey-hub .archive-mobile-count {
     order: 1;
-    /* Zero basis: in this wrapping row a full-width basis pushed the avatar /
-       Sign in down to its own line on 320px phones before the count could
-       shrink. */
-    flex: 1 1 0;
-    min-width: 0;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: start;
+    flex: 0 0 auto;
+    min-width: max-content;
     align-self: baseline;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
   }
 
   /* ROW 2 — the work row. It holds the search field and, at its right end, the
@@ -1380,6 +1389,8 @@
      left. */
   .survey-hub .actions {
     order: 4;
+    grid-column: 1 / -1;
+    grid-row: 2;
     width: 100%;
     margin-left: 0;
     display: flex;
@@ -1467,6 +1478,42 @@
     inset-block: -5px -13px;
   }
 
+  /* Issue #1825: on a phone project drill-in, give "‹ Projects" a full 44px
+     tap target box and clear separation (12px gap) from "Search files…", and
+     match the search field height + header height so nothing crowds or clips. */
+  .survey-hub:has(.projects-mobile-search-actions > .projects-mobile-back-button):not(:has(.mobile-header-select-actions)) {
+    --mobile-header-h: calc(
+      (var(--mobile-header-pad-y) * 2)
+      + var(--mobile-header-row-h)
+      + 44px
+      + var(--mobile-header-row-gap)
+      + 1px
+    );
+  }
+
+  .survey-hub .projects-mobile-search-actions:has(> .projects-mobile-back-button) {
+    gap: 12px;
+  }
+
+  .survey-hub .projects-mobile-search-actions > .projects-mobile-back-button {
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
+    padding: 0 12px;
+  }
+
+  .survey-hub .projects-mobile-search-actions > .projects-mobile-back-button::after {
+    inset-block: 0;
+  }
+
+  .survey-hub .projects-mobile-search-actions:has(> .projects-mobile-back-button) > .hub-search {
+    height: 44px !important;
+  }
+
+  .survey-hub .projects-mobile-search-actions:has(> .projects-mobile-back-button) > .hub-search::after {
+    inset: 0;
+  }
+
   .survey-hub .documents-mobile-filter::after {
     inset-block: -8px;
   }
@@ -1533,6 +1580,9 @@
      paints nothing: it is a 44px tap box pulled back to the 28px row height. */
   .survey-hub .mobile-header-select-row {
     order: 2;
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
     margin-left: auto;
     height: 44px;
     margin-block: -8px;
@@ -1570,6 +1620,9 @@
   .survey-hub .header:has(.mobile-header-select-actions) .mobile-header-select-button {
     order: 2;
     margin-left: auto;
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
     /* Out of select mode the button sits in a 44px row with -8px margins, so it
        takes 28px of row 1. Flattened, the bare 36px button made row 1 4px taller
        and pushed it and the avatar down (KAL-653). Keep it at 28px. */
@@ -1578,6 +1631,8 @@
 
   .survey-hub .header .mobile-header-select-actions {
     order: 4;
+    grid-column: 1 / -1;
+    grid-row: 2;
     width: 100%;
     min-width: 0;
     height: 44px;
@@ -1924,6 +1979,9 @@
   .survey-hub .mobile-profile {
     display: block;
     order: 3;
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
     flex: none;
     max-width: none;
     position: relative;
