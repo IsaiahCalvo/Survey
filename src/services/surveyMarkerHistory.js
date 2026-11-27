@@ -87,6 +87,50 @@ export function buildSurveyMarkerDeleteHistoryRow({
   };
 }
 
+/**
+ * Build a document-history row when a Survey Marker's tracking status,
+ * assignment, due date, or note is edited, so the History panel and exported
+ * review package (audit-log.json) record those changes (#1713).
+ */
+export function buildSurveyMarkerUpdateHistoryRow({
+  markerId,
+  marker,
+  documentId,
+  userId = null,
+  actorName = 'Someone',
+  change = 'updated',
+  updatedAt = new Date().toISOString(),
+}) {
+  const pageNumber = marker?.pageNumber ?? null;
+  const name = (typeof marker?.name === 'string' ? marker.name : String(marker?.name || '')).trim();
+  const nameLabel = name ? ` "${name}"` : '';
+  const safeChange = String(change || 'updated').trim();
+  const clientEventId = ['survey-marker-update', markerId, updatedAt, safeChange.slice(0, 24)].join(':');
+  return {
+    id: clientEventId,
+    document_id: documentId,
+    user_id: userId,
+    client_event_id: clientEventId,
+    event_type: 'survey_marker_updated',
+    source: 'survey-marker',
+    page_number: Number.isFinite(Number(pageNumber)) ? Number(pageNumber) : null,
+    annotation_id: markerId,
+    summary: `${actorName} ${safeChange} on Survey Marker${nameLabel}`,
+    payload: {
+      actionType: 'update',
+      rawActionType: 'survey_marker_updated',
+      annotationType: 'surveyMarker',
+      annotationId: markerId,
+      pageNumber,
+      change: safeChange,
+    },
+    is_undoable: false,
+    is_checkpoint: false,
+    occurred_at: updatedAt,
+    created_at: updatedAt,
+  };
+}
+
 /** True when a history restore action targets a Survey Marker. */
 export function isSurveyMarkerRestoreAction(restoreAction) {
   return Boolean(
