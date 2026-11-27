@@ -1638,6 +1638,8 @@ export default function App({ devPreviewReturnTab = null }) {
       name: file.name,
       file: file,
       filePath: filePath, // Store file path in tab
+      documentId: file?.id != null ? String(file.id) : (file?.documentId != null ? String(file.documentId) : null),
+      projectId: file?.projectId ?? file?.project_id ?? null,
       isHome: false,
       viewState: null // Initialize view state
     };
@@ -2162,6 +2164,7 @@ export default function App({ devPreviewReturnTab = null }) {
         file,
         filePath: row.filePath || row.file_path || null,
         documentId: String(row.id),
+        projectId: row.projectId ?? row.project_id ?? null,
         isHome: false,
         viewState: null,
         restorePending: true,
