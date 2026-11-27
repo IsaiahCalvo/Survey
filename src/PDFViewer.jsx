@@ -8839,8 +8839,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
   const [surveyMarkers, setSurveyMarkersRaw] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const lastSyncedAnnotationsRef = useRef(JSON.stringify({}));
+  // Hydrated / remote loads (Y.Doc, initial open, Realtime peers) are NOT local
+  // edits: record their serialized snapshot in lastSyncedAnnotationsRef so the
+  // document_annotations projection effect does not immediately re-upsert them
+  // and bump documents.updated_at on a read-only open (#1791).
+  const setSurveyMarkersFromHydration = useCallback((update) => {
+    setSurveyMarkersRaw((prev) => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      try {
+        lastSyncedAnnotationsRef.current = JSON.stringify(next || {});
+      } catch (_e) { /* keep prior baseline */ }
+      return next;
+    });
+  }, []);
   // Local edits stamp Changed By / Changed Date (surveyMarkerStamp.js); the
-  // durable store's own loads and other screens' edits use the raw setter.
+  // durable store's own loads and other screens' edits use the hydration setter.
   const surveyMarkerStampByRef = useRef('');
   const setSurveyMarkers = useCallback((update) => {
     setSurveyMarkersRaw((prev) => stampChangedSurveyMarkers(
@@ -21378,7 +21392,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [documentSyncEnabled, setDocumentSyncEnabled] = useState(false);
   const [isLoadingRemoteAnnotations, setIsLoadingRemoteAnnotations] = useState(false);
   const documentSyncUnsubscribeRef = useRef(null);
-  const lastSyncedAnnotationsRef = useRef({});
   const syncErrorCountRef = useRef(0); // Track consecutive sync errors
   // 2026-04-30 — Audit hardening (finding #10): same flush-on-unload pattern
   // as the annotation cloud-sync seam (now src/hooks/useAnnotationDoc.js; the
@@ -21728,7 +21741,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        setSurveyMarkers(prev => ({
+        setSurveyMarkersFromHydration(prev => ({
           ...prev,
           [annotation.annotationId]: {
             pageNumber: annotation.pageNumber,
@@ -21759,7 +21772,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        setSurveyMarkers(prev => ({
+        setSurveyMarkersFromHydration(prev => ({
           ...prev,
           [annotation.annotationId]: {
             ...prev[annotation.annotationId],
@@ -21788,7 +21801,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }));
       },
       onDelete: (annotationId) => {
-        setSurveyMarkers(prev => {
+        setSurveyMarkersFromHydration(prev => {
           const next = { ...prev };
           delete next[annotationId];
           return next;
@@ -22626,7 +22639,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     spaces,
     setSpaces,
     surveyMarkers,
-    setSurveyMarkers: setSurveyMarkersRaw,
+    setSurveyMarkers: setSurveyMarkersFromHydration,
     eraseEffectConsumer: consumeEraseOutboxEffect,
     onHistoryQuarantine: handleAnnotationHistoryQuarantine,
     // The unscaled per-page PDF pixel sizes the SVG layer inverts callouts
@@ -24666,7 +24679,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       setPdfId(null);
       setItems({});
       setAnnotations({});
-      setSurveyMarkers({});
+      setSurveyMarkersFromHydration({});
       setSurveyAnnotationHydration(ANNOTATION_HYDRATION_READY_LOCAL);
       return;
     }
@@ -24698,8 +24711,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const loadedSurveyMarkers = isCloudBackedDoc
       ? (isSamePdfReload ? previousSurveyMarkersForSamePdf : {})
       : loadSurveyMarkers(id);
-    // Raw: opening a file is not an edit, so nothing gets Changed By stamped.
-    setSurveyMarkersRaw(loadedSurveyMarkers);
+    // Hydration setter: opening a file is not an edit, so nothing gets Changed
+    // By stamped and the loaded state becomes the synced baseline (#1791).
+    setSurveyMarkersFromHydration(loadedSurveyMarkers);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
     // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
