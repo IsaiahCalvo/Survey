@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   classifyAnalyticsDelivery,
   isRetryableAnalyticsDelivery,
+  nextAnalyticsBackoffMs,
   redactAnalyticsString,
   resolveSurveyAnalyticsEndpoint,
   sanitizeAnalyticsProperties,
@@ -177,7 +178,20 @@ test('#1628 retest: a not-configured collector is remembered for the tab, and a 
   assert.match(analyticsSource, /const NOT_CONFIGURED_KEY = 'survey-analytics-not-configured-until';/);
   assert.match(analyticsSource, /let collectorNotConfigured = readNotConfigured\(\);/);
   assert.match(analyticsSource, /body\?\.error === 'analytics_not_configured'\) \{\n\s*rememberNotConfigured\(\);/);
-  // Later events wait for the first answer, then stop if it said "not configured".
-  assert.match(analyticsSource, /if \(!answeredOnce && firstAnswer\) \{\n\s*await firstAnswer;\n\s*if \(collectorNotConfigured\) return/);
-  assert.match(analyticsSource, /firstAnswer = delivery\.finally\(/);
+  // First-probe slot is claimed synchronously before awaiting session/fetch so
+  // startup bursts wait for one probe answer before sending anything else.
+  assert.match(analyticsSource, /if \(!answeredOnce\) \{\n\s*if \(firstAnswer\) \{\n\s*await firstAnswer;\n\s*if \(collectorNotConfigured\) return/);
+  assert.match(analyticsSource, /firstAnswer = new Promise\(/);
+});
+
+test('#1628 transient 503/5xx/429 outages trigger exponential client backoff instead of console error storms', () => {
+  assert.equal(nextAnalyticsBackoffMs(1, 503), 60_000);
+  assert.equal(nextAnalyticsBackoffMs(2, 503), 120_000);
+  assert.equal(nextAnalyticsBackoffMs(3, 503), 240_000);
+  assert.equal(nextAnalyticsBackoffMs(4, 503), 300_000);
+  assert.equal(nextAnalyticsBackoffMs(10, 503), 300_000);
+  assert.equal(nextAnalyticsBackoffMs(1, 429), 15 * 60_000);
+  assert.equal(isRetryableAnalyticsDelivery({ reason: 'collector_backoff', status: 503 }), true);
+  assert.match(analyticsSource, /const BACKOFF_UNTIL_KEY = 'survey-analytics-backoff-until';/);
+  assert.match(analyticsSource, /if \(unavailableUntilMs > Date\.now\(\)\)/);
 });
