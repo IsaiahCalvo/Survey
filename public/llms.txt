@@ -12,7 +12,7 @@ Pricing (4 tiers):
 
 ## Pages
 
-- [Kal Voe Suite](https://surveytool.app/kal-voe): Walkthru, Plot and Survey workflow and unified account
+- [Kal Voe Suite](https://kalvoe.com/): Walkthru, Plot and Survey workflow and unified account
 - [Survey Home](https://surveytool.app/welcome): what Survey is and who it is for
 - [Features](https://surveytool.app/features): site surveys with data export, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
 - [Devices](https://surveytool.app/devices): desktop, tablet and phone

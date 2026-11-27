@@ -64,8 +64,10 @@ export const ICONS = Object.freeze([
 // Where visitors see colour. Coral left here after --apply is a miss.
 const SCAN = ['public', 'tools', 'debug/email-templates-staged', 'supabase/functions/_shared'];
 // Coral that is not Survey's accent: the Walkthru pages name Walkthru's own
-// colour, and a template's colour choices are the user's ink.
-const SCAN_SKIP = [/^public\/brand-gold\//, /^public\/nightly\//];
+// colour, and a template's colour choices are the user's ink. The Kal Voe suite
+// site (public/kal-voe, scripts/build-suite-site.mjs) already shows every app in
+// its own accent: Walkthru coral, Plot blue, Survey gold.
+const SCAN_SKIP = [/^public\/brand-gold\//, /^public\/nightly\//, /^public\/kal-voe\//];
 
 const CORAL_RE = new RegExp(Object.keys(CORAL_TO_GOLD).map((h) => h.slice(1)).join('|'), 'gi');
 
