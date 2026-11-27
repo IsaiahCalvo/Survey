@@ -1,8 +1,7 @@
 // Survey Nightly is for the people who run Survey and the testers they list at
 // /flags (can_use_nightly() in the database). Anyone else who signs in here is
-// sent back to surveytool.app. If the check itself fails (offline, an older
-// database) the app stays open: this keeps strangers off beta features, it is
-// not what protects data.
+// sent back to surveytool.app. If the check fails or errors, fail closed so
+// unapproved accounts are never admitted on a transient RPC failure (#1599).
 const GATE_ID = 'survey-nightly-gate';
 const STABLE_URL = 'https://surveytool.app';
 
@@ -33,10 +32,10 @@ export async function checkNightlyAccess(supabase, session) {
   if (!session?.user) return true;
   try {
     const { data, error } = await supabase.rpc('can_use_nightly');
-    if (error) return true;
-    return data !== false;
+    if (error) return false;
+    return data === true;
   } catch {
-    return true;
+    return false;
   }
 }
 

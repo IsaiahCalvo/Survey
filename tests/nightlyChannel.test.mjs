@@ -13,12 +13,13 @@ test('nightly: the tab says Survey Nightly', () => {
   assert.equal(nightlyTitle('Flags'), 'Flags · Survey Nightly');
 });
 
-test('nightly: only people the database lets in, and a failed check never locks anyone out', async () => {
+test('nightly: only people the database lets in, and a failed check fails closed (#1599)', async () => {
   const rpc = (answer) => ({ rpc: async (name) => { assert.equal(name, 'can_use_nightly'); return answer; } });
   const session = { user: { id: 'u1' } };
   assert.equal(await checkNightlyAccess(rpc({ data: true, error: null }), session), true);
   assert.equal(await checkNightlyAccess(rpc({ data: false, error: null }), session), false);
-  assert.equal(await checkNightlyAccess(rpc({ data: null, error: { message: 'no such function' } }), session), true);
-  assert.equal(await checkNightlyAccess({ rpc: async () => { throw new Error('offline'); } }, session), true);
+  assert.equal(await checkNightlyAccess(rpc({ data: null, error: null }), session), false);
+  assert.equal(await checkNightlyAccess(rpc({ data: null, error: { message: 'no such function' } }), session), false);
+  assert.equal(await checkNightlyAccess({ rpc: async () => { throw new Error('offline'); } }, session), false);
   assert.equal(await checkNightlyAccess(rpc({ data: false, error: null }), null), true, 'signed out: the sign-in screen shows');
 });
