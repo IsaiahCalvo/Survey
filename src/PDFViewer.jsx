@@ -4874,20 +4874,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (reason) clearAnnotationSelectionForContextChange(reason);
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
-  // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
-  // show the same blue hover glow the Select tool shows AND switch the
-  // cursor to `pointer` so the user can tell "click here to pick this up."
-  // Over empty page space, leave the cursor alone (Pdfjs owns pan /
-  // grab styling). Uses the same resolveAnnotationAt hit-test as the
-  // pan-mode click listener, so behavior is consistent between "what will
-  // a click pick?" and "what does the glow preview?".
+  // UX: position-based hover halo — when the cursor is over a mark and the
+  // SVG layer is pointer-inert, show the same blue glow Rectangle Select
+  // paints from live pointer events. Over empty page space, leave the
+  // cursor alone. Uses the same resolveAnnotationAt hit-test as the click
+  // listeners, so "what will a click pick?" and "what does the glow
+  // preview?" stay the same.
   //
   // Rationale for document-level mousemove (vs flipping SVG pointer-events):
-  // the SVG layer is `pointer-events: none` in pan mode so empty-space
-  // clicks pass through to Pdfjs for panning. Re-enabling pointer
-  // events on hit-zones would require guarding their onPointerDown to
-  // avoid fighting pan gestures — more changes + more risk than a single
-  // mousemove listener that reuses the hit-test already in production.
+  // Pan and Text Select keep the SVG root `pointer-events: none` so empty
+  // page pixels reach Pdfjs (pan / native text drag, KAL-239 / #1796).
+  // Re-enabling pointer events on hit-zones would fight those gestures.
+  // Rectangle Select is excluded: its live SVG pointerenter/leave already
+  // paints this glow. Text Select keeps the I-beam (no pointer-hand
+  // override); a drag is still a native text range.
   //
   // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
   // + elementsFromPoint + querySelectorAll fallback) runs at most once per
@@ -4899,6 +4899,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Owner 2026-10-22: under Pan a mark lying over PDF text owns the hover, so
   // the text under it shows no I-beam and a press there never selects text.
   // Same hit test as the halo above, so I-beam and halo never both show.
+  // Text markups are the exception: they lie on their own text and keep the
+  // I-beam (utils/panTextSelect.js), but they still get this halo.
   const panTextMarkAt = useCallback((event) => {
     const hit = resolveAnnotationAt(event);
     const mark = hit?.kind === 'annotation'
@@ -4911,8 +4913,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // Pan shows the blue halo over a mark a click would pick, as Drawboard's
     // Pan does (owner 2026-10-14 reversed 10-13), but keeps the grab hand: a
     // press-drag from an unselected mark still pans (GESTURE-CONTRACT P7).
+    // Text Select is the same pointer-inert case (KAL-239 / #1796): existing
+    // highlights, strikes, underlines and squiggles must glow on hover, while
+    // a drag still selects text. Rectangle Select stays out — live SVG hover.
     const haloByPosition = activeTool === 'eraser' || activeTool === 'pan'
-      || (shouldShowHoverHalo(activeTool) && activeTool !== 'pan' && activeTool !== 'select' && activeTool !== 'text-select');
+      || (shouldShowHoverHalo(activeTool) && activeTool !== 'pan' && activeTool !== 'select');
     if (!haloByPosition) {
       // Tool changed away from pan — clear any lingering hover state + cursor.
       setPendingSvgHover((prev) => (prev == null ? prev : null));

@@ -206,8 +206,10 @@ export function getToolSelectionClass(tool) {
 /**
  * Rule 2 — the blue hover halo: under Pan and every tool that picks marks,
  * over a mark that tool may pick (`markGroup` given), or at all (omitted).
- * Select draws its own halo on the live layer. (The eraser's Whole-mode
- * delete preview is the eraser's own tool preview, not this halo.)
+ * Rectangle Select draws its own halo on the live layer. Text Select does
+ * not: its SVG is pointer-inert for native text drags (KAL-239 / #1796), so
+ * it uses the same document-level position halo as Pan. (The eraser's
+ * Whole-mode delete preview is the eraser's own tool preview, not this halo.)
  */
 export function shouldShowHoverHalo(tool, markGroup) {
   if (arguments.length < 2) return canToolPickAnyGroup(tool);
