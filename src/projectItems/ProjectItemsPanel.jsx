@@ -322,7 +322,7 @@ function ItemDetail({
         <div className="item-links" data-item-links>
           {(item.links || []).map((l) => (
             <div key={l.document_id} className="item-link-row">
-              <button type="button" className="item-link-open" onClick={() => { const d = documents.find((x) => x.id === l.document_id); if (d) onOpenDocument?.(d); }}>
+              <button type="button" className="item-link-open" onClick={() => { const d = documents.find((x) => x.id === l.document_id); if (d) { onClose?.(); onOpenDocument?.(d); } }}>
                 <Icon name="document" size={13} contentType="document" />
                 <span>{docName(l.document_id)}</span>
               </button>
