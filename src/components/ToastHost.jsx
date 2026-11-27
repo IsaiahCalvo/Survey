@@ -49,6 +49,8 @@ const TYPE_CLASS = { info: 'info', success: 'success', error: 'error', warn: 'wa
 // screen, wherever the shell put it (see .app-toast-host).
 const PHONE_TOP_CHROME_SELECTORS = ['.mobile-pdf-header', '.mobile-pdf-properties', '.survey-hub .header', '.document-lock-banner', '.storage-banner'];
 
+const DESKTOP_BOTTOM_CHROME_SELECTORS = ['.sheet-set-bar', '.pinned-dock-shell.is-bottom'];
+
 export default function ToastHost() {
   const tip = useTooltip();
   const storeRef = useRef(null);
@@ -84,19 +86,44 @@ export default function ToastHost() {
 
   useLayoutEffect(() => {
     const host = hostRef.current;
-    if (!host || !isPhoneLayout()) return;
-    let chromeBottom = 0;
-    PHONE_TOP_CHROME_SELECTORS.forEach((selector) => {
+    if (!host) return;
+    if (isPhoneLayout()) {
+      host.style.removeProperty('--app-toast-bottom');
+      delete host.dataset.bottomClear;
+      let chromeBottom = 0;
+      PHONE_TOP_CHROME_SELECTORS.forEach((selector) => {
+        document.querySelectorAll(selector).forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          // Visible, and a TOP bar (not some other element sharing the class).
+          if (rect.height > 0 && rect.top < window.innerHeight / 3) {
+            chromeBottom = Math.max(chromeBottom, rect.bottom);
+          }
+        });
+      });
+      if (chromeBottom > 0) host.style.setProperty('--app-toast-chrome-bottom', `${Math.round(chromeBottom)}px`);
+      else host.style.removeProperty('--app-toast-chrome-bottom');
+      return;
+    }
+    // Desktop (#1788): lift the toast stack cleanly above any bottom-centered
+    // viewer pill (e.g. .sheet-set-bar) so hints like "Click the page where the
+    // comment goes." never cover the document name.
+    let minChromeTop = window.innerHeight;
+    DESKTOP_BOTTOM_CHROME_SELECTORS.forEach((selector) => {
       document.querySelectorAll(selector).forEach((el) => {
         const rect = el.getBoundingClientRect();
-        // Visible, and a TOP bar (not some other element sharing the class).
-        if (rect.height > 0 && rect.top < window.innerHeight / 3) {
-          chromeBottom = Math.max(chromeBottom, rect.bottom);
+        if (rect.height > 0 && rect.width > 0 && rect.bottom <= window.innerHeight + 2 && rect.top > window.innerHeight / 2) {
+          minChromeTop = Math.min(minChromeTop, rect.top);
         }
       });
     });
-    if (chromeBottom > 0) host.style.setProperty('--app-toast-chrome-bottom', `${Math.round(chromeBottom)}px`);
-    else host.style.removeProperty('--app-toast-chrome-bottom');
+    if (minChromeTop < window.innerHeight) {
+      const clearance = Math.max(24, Math.round(window.innerHeight - minChromeTop) + 12);
+      host.style.setProperty('--app-toast-bottom', `${clearance}px`);
+      host.dataset.bottomClear = '1';
+    } else {
+      host.style.removeProperty('--app-toast-bottom');
+      delete host.dataset.bottomClear;
+    }
   }, [toasts]);
 
   if (!toasts.length) return null;

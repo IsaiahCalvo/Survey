@@ -12,7 +12,7 @@
 
 .app-toast-host {
   position: fixed;
-  bottom: 24px; /* design decision 3: the ONE toast lives at the bottom */
+  bottom: var(--app-toast-bottom, 24px); /* design decision 3: clear of bottom document bar (#1788) */
   left: 50%;
   transform: translateX(-50%);
   z-index: 100000; /* UX: above floating chrome so an error is never hidden. */
@@ -30,6 +30,10 @@
    the two never overlap (UndoToast sets the flag on <html>). */
 html[data-undo-toast-open] .app-toast-host {
   bottom: 68px;
+}
+
+html[data-undo-toast-open] .app-toast-host[data-bottom-clear="1"] {
+  bottom: max(68px, var(--app-toast-bottom, 68px));
 }
 
 .app-toast {

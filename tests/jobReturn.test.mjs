@@ -113,6 +113,14 @@ test('the file is Plot\'s job with the new package.json', async () => {
   assert.equal(JSON.parse(await out.file('package.json').async('string')).sourceApp, 'survey');
   assert.equal(await out.file('pages/B01.pdf').async('string'), '%PDF-1.4 one');
   assert.equal(returnFileName(manifest, new Date('2026-11-18T09:00:00Z')), 'Hoboken field changes 2026-11-18.kvjob');
+  // Local calendar date, never UTC (#1792): e.g. 9:59 PM ET on Nov 26 (Nov 27 UTC).
+  const fakeLocalDate = {
+    getFullYear: () => 2026,
+    getMonth: () => 10,
+    getDate: () => 26,
+    toISOString: () => '2026-11-27T02:59:30.208Z',
+  };
+  assert.equal(returnFileName(manifest, fakeLocalDate), 'Hoboken field changes 2026-11-26.kvjob');
   assert.throws(() => buildReturnManifest({ manifest: { format: 'x' } }), /not a Kal Voe job file/);
 });
 
