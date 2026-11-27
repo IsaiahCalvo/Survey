@@ -548,7 +548,7 @@ export default function PagePinsHost({
   panelOn = false,
 }) {
   const live = Boolean(enabled && isActive && documentId);
-  const { comments, people, applyLocal } = useMarkComments(documentId, { enabled: Boolean(enabled && documentId) });
+  const { comments, people, applyLocal } = useMarkComments(documentId, { enabled: live });
   const [askConfirm, confirmDialog] = useConfirmDialog();
   const canWrite = !readOnly;
   const coarse = useMemo(() => {

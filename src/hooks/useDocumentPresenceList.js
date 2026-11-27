@@ -24,6 +24,7 @@ import {
   rosterFromMap,
   rostersEqual
 } from './presenceRoster.js';
+import { createVisibilityGatedSubscription } from '../utils/realtimePolicy.js';
 
 // Local age-out cadence. Network reads do NOT happen on this interval; it only
 // drops stale rows client-side so an unclean disconnect disappears within ~2 min.
@@ -105,13 +106,18 @@ export function useDocumentPresenceList({ documentId, enabled = true } = {}) {
     };
 
     // Subscribe FIRST, then seed when the channel is live. Re-seeding on every
-    // SUBSCRIBED also re-syncs the roster after a websocket reconnect.
-    const unsub = subscribeToDocumentPresence(documentId, onEvent, {
-      onSubscribed: () => { if (!cancelled) seed(); }
+    // SUBSCRIBED also re-syncs the roster after a websocket reconnect. Pause the
+    // postgres_changes subscription when the browser tab is hidden to reduce
+    // Realtime WAL polling on idle tabs.
+    const gatedSub = createVisibilityGatedSubscription({
+      subscribe: () => subscribeToDocumentPresence(documentId, onEvent, {
+        onSubscribed: () => { if (!cancelled) seed(); }
+      }),
+      onResume: () => { if (!cancelled) seed(); },
     });
 
     const seedFallback = setTimeout(() => {
-      if (!cancelled && !seeded) seed();
+      if (!cancelled && !seeded && gatedSub.isSubscribed()) seed();
     }, SEED_FALLBACK_MS);
 
     // Visible-tab maintenance: age out stale rows locally (no network).
@@ -125,7 +131,7 @@ export function useDocumentPresenceList({ documentId, enabled = true } = {}) {
       cancelled = true;
       clearTimeout(seedFallback);
       clearInterval(maintenance);
-      try { unsub?.(); } catch { /* ignore */ }
+      try { gatedSub.dispose(); } catch { /* ignore */ }
     };
   }, [documentId, enabled]);
 
