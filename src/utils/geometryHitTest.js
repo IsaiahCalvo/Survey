@@ -2500,28 +2500,51 @@ export const doesRectIntersectTextbox = (selRect, textObj) => {
     return false;
   }
 
-  const matrix = getObjectTransformMatrix(textObj);
-  const width = textObj.width || 0;
-  const height = textObj.height || 0;
+  let canvasVertices;
+  if (!isLiveFabricObject(textObj)) {
+    const width = Math.abs((textObj.width || 0) * (textObj.scaleX || 1));
+    const height = Math.abs((textObj.height || 0) * (textObj.scaleY || 1));
+    const left = textObj.originX === 'center' ? (textObj.left ?? 0) - width / 2 : (textObj.left ?? 0);
+    const top = textObj.originY === 'center' ? (textObj.top ?? 0) - height / 2 : (textObj.top ?? 0);
+    const cx = left + width / 2;
+    const cy = top + height / 2;
+    const rad = (Number(textObj.angle) || 0) * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const rot = (x, y) => ({
+      x: cx + (x - cx) * cos - (y - cy) * sin,
+      y: cy + (x - cx) * sin + (y - cy) * cos,
+    });
+    canvasVertices = [
+      rot(left, top),
+      rot(left + width, top),
+      rot(left + width, top + height),
+      rot(left, top + height),
+    ];
+  } else {
+    const matrix = getObjectTransformMatrix(textObj);
+    const width = textObj.width || 0;
+    const height = textObj.height || 0;
 
-  // Account for origin
-  const originX = textObj.originX === 'center' ? -width / 2 : 0;
-  const originY = textObj.originY === 'center' ? -height / 2 : 0;
+    // Account for origin
+    const originX = textObj.originX === 'center' ? -width / 2 : 0;
+    const originY = textObj.originY === 'center' ? -height / 2 : 0;
 
-  // Get corner vertices
-  const localVertices = [
-    { x: originX, y: originY },
-    { x: originX + width, y: originY },
-    { x: originX + width, y: originY + height },
-    { x: originX, y: originY + height }
-  ];
+    // Get corner vertices
+    const localVertices = [
+      { x: originX, y: originY },
+      { x: originX + width, y: originY },
+      { x: originX + width, y: originY + height },
+      { x: originX, y: originY + height }
+    ];
 
-  // Transform to canvas space
-  const [a, b, c, d, e, f] = matrix;
-  const canvasVertices = localVertices.map(p => ({
-    x: a * p.x + c * p.y + e,
-    y: b * p.x + d * p.y + f
-  }));
+    // Transform to canvas space
+    const [a, b, c, d, e, f] = matrix;
+    canvasVertices = localVertices.map(p => ({
+      x: a * p.x + c * p.y + e,
+      y: b * p.x + d * p.y + f
+    }));
+  }
 
   // Check if any vertex is inside selection rect
   for (const v of canvasVertices) {
@@ -2979,9 +3002,31 @@ export const getObjectGeometryBounds = (obj) => {
         break;
       }
       case 'rect': {
+        const strokeWidth = (obj.strokeWidth || 0) / 2;
+        if (!isLiveFabricObject(obj)) {
+          const width = Math.abs((obj.width || 0) * (obj.scaleX || 1));
+          const height = Math.abs((obj.height || 0) * (obj.scaleY || 1));
+          const left = obj.originX === 'center' ? (obj.left ?? 0) - width / 2 : (obj.left ?? 0);
+          const top = obj.originY === 'center' ? (obj.top ?? 0) - height / 2 : (obj.top ?? 0);
+          const cx = left + width / 2;
+          const cy = top + height / 2;
+          const rad = (Number(obj.angle) || 0) * Math.PI / 180;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+          const rot = (x, y) => ({
+            x: cx + (x - cx) * cos - (y - cy) * sin,
+            y: cy + (x - cx) * sin + (y - cy) * cos,
+          });
+          [
+            rot(left - strokeWidth, top - strokeWidth),
+            rot(left + width + strokeWidth, top - strokeWidth),
+            rot(left + width + strokeWidth, top + height + strokeWidth),
+            rot(left - strokeWidth, top + height + strokeWidth),
+          ].forEach((v) => updateBounds(v.x, v.y));
+          break;
+        }
         const width = obj.width || 0;
         const height = obj.height || 0;
-        const strokeWidth = (obj.strokeWidth || 0) / 2;
         const originX = obj.originX === 'center' ? -width / 2 : 0;
         const originY = obj.originY === 'center' ? -height / 2 : 0;
 
@@ -3057,6 +3102,28 @@ export const getObjectGeometryBounds = (obj) => {
       case 'textbox':
       case 'text':
       case 'i-text': {
+        if (!isLiveFabricObject(obj)) {
+          const width = Math.abs((obj.width || 0) * (obj.scaleX || 1));
+          const height = Math.abs((obj.height || 0) * (obj.scaleY || 1));
+          const left = obj.originX === 'center' ? (obj.left ?? 0) - width / 2 : (obj.left ?? 0);
+          const top = obj.originY === 'center' ? (obj.top ?? 0) - height / 2 : (obj.top ?? 0);
+          const cx = left + width / 2;
+          const cy = top + height / 2;
+          const rad = (Number(obj.angle) || 0) * Math.PI / 180;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+          const rot = (x, y) => ({
+            x: cx + (x - cx) * cos - (y - cy) * sin,
+            y: cy + (x - cx) * sin + (y - cy) * cos,
+          });
+          [
+            rot(left, top),
+            rot(left + width, top),
+            rot(left + width, top + height),
+            rot(left, top + height),
+          ].forEach((v) => updateBounds(v.x, v.y));
+          break;
+        }
         const width = obj.width || 0;
         const height = obj.height || 0;
         const originX = obj.originX === 'center' ? -width / 2 : 0;

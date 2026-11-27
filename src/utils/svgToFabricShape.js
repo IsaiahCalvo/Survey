@@ -118,6 +118,16 @@ export function toFabricShape(annotation, options = {}) {
       };
     }
 
+    case 'image':
+      return {
+        ...base,
+        type: 'rect',
+        width: a.width ?? 0,
+        height: a.height ?? 0,
+        strokeWidth: 0,
+        fill: 'rgba(0,0,0,0.001)',
+      };
+
     case 'path':
       return {
         ...base,
@@ -125,6 +135,13 @@ export function toFabricShape(annotation, options = {}) {
         width: a.width ?? 0,
         height: a.height ?? 0,
         pathOffset: a.pathOffset,
+        flipX: a.flipX,
+        flipY: a.flipY,
+        skewX: a.skewX,
+        skewY: a.skewY,
+        inkGeometrySpace: a.inkGeometrySpace,
+        inkGeometryOrigin: a.inkGeometryOrigin,
+        ...(a.data ? { data: a.data } : {}),
       };
 
     case 'group':
