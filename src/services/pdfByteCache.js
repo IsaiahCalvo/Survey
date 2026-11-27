@@ -166,6 +166,24 @@ export function createPdfByteCache({
   // upload seed outliving its 2 s cap, then a page edit replacing the file).
   const pathEpochs = new Map();
   const pathEpoch = (path) => pathEpochs.get(path) || 0;
+  // Lightweight in-memory index of keys known to exist in META_STORE (strings
+  // only, never bytes). Lets warm reopens defer speculative signed-URL / R2
+  // calls until after fetchInfo + cache.peek confirm whether a miss happened.
+  const knownKeys = new Set();
+  const warmKnownKeys = (database) => {
+    const startedIn = generation;
+    try {
+      const tx = database.transaction(META_STORE, 'readonly');
+      const meta = tx.objectStore(META_STORE);
+      if (typeof meta.getAllKeys === 'function') {
+        const req = meta.getAllKeys();
+        req.onsuccess = () => {
+          if (startedIn !== generation) return;
+          for (const k of req.result || []) if (typeof k === 'string') knownKeys.add(k);
+        };
+      }
+    } catch { /* best-effort hint only */ }
+  };
   let budgetPromise = null;
   const budget = () => {
     if (typeof budgetBytes !== 'function') return Promise.resolve(budgetBytes);
@@ -184,6 +202,7 @@ export function createPdfByteCache({
           try { database.close(); } catch { /* already closed */ }
           if (dbPromise === stored) dbPromise = null;
         };
+        warmKnownKeys(database);
         return database;
       }).catch((error) => {
         // Private mode / blocked upgrade: no cache for this page, downloads as before.
@@ -218,10 +237,12 @@ export function createPdfByteCache({
       if (!database) return null;
       const tx = database.transaction([META_STORE, FILE_STORE], 'readonly');
       const info = await requestResult(tx.objectStore(META_STORE).get(key), tx, timeoutMs);
-      if (!info || info.stamp !== stamp) return null;
+      if (!info) { knownKeys.delete(key); return null; }
+      if (info.stamp !== stamp) return null;
       const file = await requestResult(tx.objectStore(FILE_STORE).get(key), tx, timeoutMs);
       const bytes = file?.bytes;
       if (!(bytes instanceof ArrayBuffer) || bytes.byteLength !== info.size) return null;
+      knownKeys.add(key);
       touch(key).catch(() => {});
       return bytes;
     } catch (error) {
@@ -247,7 +268,11 @@ export function createPdfByteCache({
         requestResult(tx.objectStore(FILE_STORE).get(key), tx, timeoutMs),
       ]);
       const bytes = file?.bytes;
-      if (!info?.stamp || !(bytes instanceof ArrayBuffer) || bytes.byteLength !== info.size) return null;
+      if (!info?.stamp || !(bytes instanceof ArrayBuffer) || bytes.byteLength !== info.size) {
+        knownKeys.delete(key);
+        return null;
+      }
+      knownKeys.add(key);
       return { stamp: info.stamp, bytes };
     } catch (error) {
       console.warn('[pdfByteCache] read failed:', error?.message || error);
@@ -294,6 +319,7 @@ export function createPdfByteCache({
             if (!row || total + size <= limit) { save(); return; }
             if (row.primaryKey !== key) {
               total -= row.value.size || 0;
+              knownKeys.delete(row.primaryKey);
               files.delete(row.primaryKey);
               row.delete();
             }
@@ -308,6 +334,7 @@ export function createPdfByteCache({
         await remove(key);
         return false;
       }
+      knownKeys.add(key);
       return true;
     } catch (error) {
       // QuotaExceededError is the expected one: losing a cache entry only
@@ -335,6 +362,7 @@ export function createPdfByteCache({
         const drop = indexName ? true : value(row.value);
         if (drop) {
           total -= row.value.size || 0;
+          knownKeys.delete(row.primaryKey);
           files.delete(row.primaryKey);
           row.delete();
         }
@@ -347,6 +375,7 @@ export function createPdfByteCache({
   /** Drop one account's copy of one path (access refused for it). */
   const remove = async (key) => {
     if (!key) return;
+    knownKeys.delete(key);
     try {
       const database = await db();
       if (!database) return;
@@ -374,6 +403,10 @@ export function createPdfByteCache({
   const removePath = async (path) => {
     if (!isPdfPath(path)) return; // never cached: no transaction (survey data autosaves)
     pathEpochs.set(path, pathEpoch(path) + 1);
+    const suffix = `${SEP}${path}`;
+    for (const k of knownKeys) {
+      if (k.endsWith(suffix)) knownKeys.delete(k);
+    }
     try { await removeWhere(PATH_INDEX, path); } catch (error) {
       console.warn('[pdfByteCache] remove failed:', error?.message || error);
     }
@@ -382,6 +415,10 @@ export function createPdfByteCache({
   /** Keep only `actorId`'s entries (another account's must not stay on disk). */
   const retainOnly = async (actorId, { abortInFlight = true } = {}) => {
     if (abortInFlight) generation += 1; // a read of the previous account in flight must not land
+    const prefix = `${actorId}${SEP}`;
+    for (const k of knownKeys) {
+      if (!k.startsWith(prefix)) knownKeys.delete(k);
+    }
     try { await removeWhere(null, (row) => row.actorId !== actorId); } catch (error) {
       console.warn('[pdfByteCache] retain failed:', error?.message || error);
     }
@@ -389,6 +426,7 @@ export function createPdfByteCache({
 
   async function clear() {
     generation += 1;
+    knownKeys.clear();
     try {
       const database = await db();
       if (!database) return;
@@ -413,6 +451,7 @@ export function createPdfByteCache({
   return {
     get generation() { return generation; },
     pathEpoch,
+    hasKnownKey: (key) => Boolean(key && knownKeys.has(key)),
     get,
     peek,
     use: (key) => touch(key).catch(() => {}),
