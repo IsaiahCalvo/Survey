@@ -257,6 +257,7 @@ import {
   tapSurveyMarkerBox,
 } from '../survey/markerShapes.js';
 import { isPhoneLayout } from '../utils/layoutMode.js';
+import { findNearestSurveyMarkerAt } from '../utils/surveyMarkerHitTest.js';
 import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
 import { prewarmSmartFillPage } from '../survey/smartFillProvider.js';
@@ -8748,6 +8749,30 @@ const SVGAnnotationLayerBody = memo(({
               surveyMarkerDragRef.current = null;
               handleAnnotationPointerDown(e, annotationIndex);
               return;
+            }
+          }
+          // #1815: In Select mode, give Survey Markers the same touch/mouse
+          // hit slop (16 px touch, 6 px mouse) that placement taps have so a
+          // phone tap on or slightly off a small/dot marker selects it cleanly
+          // instead of falling through to empty-page deselect/marquee.
+          if (
+            isSelectTool
+            && activeTool !== 'text-select'
+            && e.button === 0
+            && !e.target?.closest?.('[data-callout-id], [data-survey-marker-id]')
+            && surveyMarkerElements.length > 0
+          ) {
+            const nearMarker = findNearestSurveyMarkerAt(e, svgRef.current?.parentElement || svgRef.current);
+            if (nearMarker?.annotationId) {
+              const entry = surveyMarkerElements.find(
+                (candidate) =>
+                  String(candidate?.surveyMarker?.annotationId) === String(nearMarker.annotationId)
+                  && !candidate?.surveyMarker?.liveOverlay,
+              );
+              if (entry) {
+                handleSurveyMarkerPointerDown(e, entry);
+                return;
+              }
             }
           }
           setSurveyMarkerPreviewBounds(null);

@@ -83,24 +83,31 @@ export default function WalkthruHandoffDialog({
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  const listWalksRef = useRef(listWalks);
+  listWalksRef.current = listWalks;
+  const readWalkRef = useRef(readWalk);
+  readWalkRef.current = readWalk;
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
 
   useEffect(() => {
     if (fromJob) return;
-    listWalks(supabase)
+    listWalksRef.current(supabase)
       .then((list) => { if (alive.current) setWalks(list); })
       .catch((err) => { if (alive.current) { setWalks([]); setError(err?.message || String(err)); } });
-  }, [listWalks, supabase, fromJob]);
+  }, [supabase, fromJob]);
 
   useEffect(() => {
     if (fromJob) return;
     setWalk(null);
     setResult(null);
     if (!walkId) return;
-    readWalk(supabase, walkId)
+    readWalkRef.current(supabase, walkId)
       .then((w) => { if (alive.current) setWalk(w); })
       .catch((err) => { if (alive.current) setError(err?.message || String(err)); });
-  }, [walkId, readWalk, supabase, fromJob]);
+  }, [walkId, supabase, fromJob]);
 
   const pickJob = async (file) => {
     if (!file || !openJob) return;
@@ -207,6 +214,7 @@ export default function WalkthruHandoffDialog({
       onClose={busy ? undefined : onClose}
       width={480}
       zIndex={Z_INDEX.modalOverlay}
+      atRoot
       cardProps={{ 'data-walkthru-handoff': '' }}
       footer={result ? (
         <button type="button" data-autofocus="" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={onClose}>Done</button>
