@@ -6193,6 +6193,29 @@ export function useSVGInteraction({
     // pure transform surface; never arm the gesture. (Whole-shape move is
     // guarded in handlePointerMove, which all drag modes flow through.)
     if (document.body.getAttribute('data-readonly') === 'true') return;
+    // #1655: a Shift-click on the rotate handle when an unselected mark sits
+    // directly underneath means "add that mark to the selection", not a 0-deg
+    // rotate. Over empty space or the selected mark itself, Shift-drag still
+    // snaps rotation to 15°.
+    if (
+      e.shiftKey
+      && handleId === 'mtr'
+      && svgRef.current
+      && typeof document !== 'undefined'
+      && typeof document.elementsFromPoint === 'function'
+    ) {
+      const under = document.elementsFromPoint(e.clientX, e.clientY);
+      for (const el of under) {
+        if (!svgRef.current.contains(el)) continue;
+        const markEl = el.closest?.('[data-annotation-index]');
+        if (!markEl || !svgRef.current.contains(markEl)) continue;
+        const idx = Number.parseInt(markEl.getAttribute('data-annotation-index'), 10);
+        if (Number.isInteger(idx) && !selectedIds?.has?.(idx) && canSelectAnnotationByIndex(idx)) {
+          handleAnnotationPointerDown(e, idx);
+          return;
+        }
+      }
+    }
     // Capture on the page's own SVG, not on the grabber. A grabber can leave
     // the DOM mid-drag: a frame dragged through itself (owner 2026-11-03,
     // every mark flips) passes through thin, where the small-frame tier hides
@@ -7075,7 +7098,7 @@ export function useSVGInteraction({
       };
       diagLog('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
     } catch (err) { console.warn('[BboxScaleDiag] start log failed', err); }
-  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber, dropForeignMarquee]);
+  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber, dropForeignMarquee, canSelectAnnotationByIndex, handleAnnotationPointerDown]);
 
   // ---------------------------------------------------------------------------
   // Group delete (Plan 03): remove all selected annotations
