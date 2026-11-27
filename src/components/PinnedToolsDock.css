@@ -387,10 +387,10 @@ body:has(.mobile-pdf-sheet:not(.is-collapsed), .mobile-pdf-tool-sheet, .mobile-p
   pointer-events: none;
 }
 .pinned-dock-shell.is-phone .pinned-dock__pin.chrome-subcontrol {
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
-  min-height: 38px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
 }
 .pinned-dock-shell.is-phone .pinned-dock__pins { touch-action: pan-x; }
 /* The z-index above loses to the sheets in practice: they sit in another
@@ -408,6 +408,12 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .pinned-dock-shell.is-phone {
   min-height: 38px;
   padding: 0;
   justify-content: center;
+}
+.pinned-dock-shell.is-phone .pinned-dock__folded.chrome-subcontrol {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
 }
 
 /* The "+N" slot (more pins than fit) and its grid of the rest. */

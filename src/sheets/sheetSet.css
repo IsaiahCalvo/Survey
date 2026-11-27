@@ -22,9 +22,17 @@
 /* The pinned tools dock, when it sits along the bottom, keeps its place;
    the bar stands on it. */
 [data-sheet-set-host]:has(.pinned-dock-shell.is-bottom) .sheet-set-bar { bottom: 60px; }
-.sheet-set-bar.is-phone { bottom: calc(var(--mobile-dock-bar-height, 46px) + 8px); z-index: 5450; }
+.sheet-set-bar.is-phone {
+  bottom: calc(var(--mobile-dock-bar-height, 46px) + 8px);
+  max-width: calc(100% - 16px);
+  z-index: 5450;
+}
 [data-sheet-set-host]:has(.pinned-dock-shell.is-phone) .sheet-set-bar.is-phone {
-  bottom: calc(var(--mobile-dock-bar-height, 46px) + 60px);
+  bottom: calc(var(--mobile-dock-bar-height, 46px) + 64px);
+}
+body:has(.mobile-pdf-sheet:not(.is-collapsed), .mobile-pdf-tool-sheet, .mobile-pdf-colorpicker-surface) .sheet-set-bar.is-phone {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .sheet-set-bar__btn,
@@ -45,14 +53,14 @@
   cursor: pointer;
 }
 .sheet-set-bar.is-phone .sheet-set-bar__btn,
-.sheet-set-bar.is-phone .sheet-set-bar__picker { height: 36px; min-width: 36px; }
+.sheet-set-bar.is-phone .sheet-set-bar__picker { height: 44px; min-height: 44px; min-width: 44px; }
 .sheet-set-bar__btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text-1); }
 .sheet-set-bar__picker:hover { background: var(--surface-3); }
 .sheet-set-bar__btn:disabled { color: var(--text-disabled); cursor: default; }
 /* Picked: a lifted surface and a strong border, never gold (gold is ink). */
 .sheet-set-bar__btn.is-picked { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-1); }
 .sheet-set-bar__picker { min-width: 0; max-width: 320px; color: var(--text-1); font-weight: 500; }
-.sheet-set-bar.is-phone .sheet-set-bar__picker { max-width: 46vw; }
+.sheet-set-bar.is-phone .sheet-set-bar__picker { max-width: calc(100vw - 88px); flex: 1 1 auto; }
 .sheet-set-bar__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet-set-bar__count { flex: none; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .sheet-set-bar__rule { width: 1px; height: 18px; margin: 0 3px; background: var(--border); flex: none; }
