@@ -14,7 +14,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  width: 348px;
+  width: 364px;
   padding: 10px 14px 10px;
   background: var(--surface-2);
   /* The right side is a hairline divider against the rail (owner
@@ -208,6 +208,18 @@
   gap: 2px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
+}
+
+/* Menu-backed toggles (Paper, Thin lines, Page grid) wrap their button in
+   .page-grid-menu; let the wrapper shrink to its grid track and stretch the
+   button to fill it so every toggle matches the bare buttons (#1742). */
+.view-drawer__toggles > .page-grid-menu {
+  min-width: 0;
+}
+
+.view-drawer__toggles > .page-grid-menu > .view-drawer__toggle {
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .view-drawer__toggle {

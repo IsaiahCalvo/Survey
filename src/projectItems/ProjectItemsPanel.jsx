@@ -848,6 +848,7 @@ export default function ProjectItemsPanel({
         title={`New ${k.one.toLowerCase()}`}
         ariaLabel={`New ${k.one.toLowerCase()}`}
         busy={createBusy}
+        atRoot
         onClose={() => { if (!createBusy) setCreateDraft(null); }}
         cardProps={{ onSubmit: submitCreateItem, 'data-testid': 'new-item-dialog' }}
         footer={(
@@ -863,6 +864,7 @@ export default function ProjectItemsPanel({
         <input
           id="new-project-item-title"
           type="text"
+          data-autofocus=""
           className="dialog-prompt-input"
           data-testid="new-item-title"
           style={DIALOG_FIELD_STYLE}

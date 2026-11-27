@@ -42972,6 +42972,7 @@ ${pageBlocks}
                   const button = (
                     <button
                       key={t.id}
+                      type="button"
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
