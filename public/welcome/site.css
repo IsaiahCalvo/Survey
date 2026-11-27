@@ -147,18 +147,32 @@ p{margin:0 0 1em}
 .dev-ph .scr{border:6px solid #1c1c1e;border-radius:28px}
 .dev figcaption{margin-top:16px;text-align:center;font-weight:600;font-size:16px;color:var(--soft)}
 
-.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;align-items:stretch}
-.plan{display:flex;flex-direction:column;background:var(--sheet);border-radius:var(--r-card);padding:32px;position:relative}
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;align-items:stretch}
+.plan{display:flex;flex-direction:column;background:var(--sheet);border-radius:var(--r-card);padding:26px;position:relative}
 .plan.best{outline:2px solid var(--ink);outline-offset:-2px}
-.plan h3{margin:0;font-size:20px}
-.flag{position:absolute;top:24px;right:24px;margin:0;font:600 13px/1 var(--body);background:var(--ink);color:var(--paper);padding:7px 10px;border-radius:999px}
-.amt{font:600 48px/1 var(--display);letter-spacing:-.03em;margin:22px 0 8px}
-.amt small{font:500 16px var(--body);letter-spacing:0;color:var(--soft);margin-left:4px}
-.note{color:var(--soft);font-size:15px;min-height:24px}
-.plan ul{list-style:none;padding:0;margin:14px 0 28px;flex:1}
-.plan li{padding:8px 0 8px 28px;position:relative;font-size:16px;border-top:1px solid var(--rule)}
+.plan h3{margin:0;font-size:20px;padding-right:92px}
+.flag{position:absolute;top:22px;right:20px;margin:0;font:600 12px/1 var(--body);background:var(--ink);color:var(--paper);padding:6px 10px;border-radius:999px}
+.amt{font:600 40px/1 var(--display);letter-spacing:-.03em;margin:20px 0 8px}
+.amt small{font:500 15px var(--body);letter-spacing:0;color:var(--soft);margin-left:4px}
+.note{color:var(--soft);font-size:14px;min-height:24px}
+.plan ul{list-style:none;padding:0;margin:14px 0 24px;flex:1}
+.plan li{padding:8px 0 8px 26px;position:relative;font-size:15px;border-top:1px solid var(--rule)}
 .plan li::before{content:"";position:absolute;left:2px;top:14px;width:11px;height:6px;border-left:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:rotate(-45deg)}
 .plan .btn{width:100%}
+
+/* Kal Voe suite 3-step workflow bar (#1677, #1684) */
+.suite-brand{display:inline-flex;align-items:center;gap:12px;margin-bottom:20px}
+.suite-brand img{width:44px;height:44px;border-radius:10px}
+.suite-brand span{font:600 14px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent-on-navy)}
+.suite-flow{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px;text-align:left}
+.suite-step{background:var(--navy-2);border:1px solid rgba(255,255,255,.1);border-radius:var(--r-card);padding:24px}
+.suite-step-n{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:var(--accent-on-navy);color:#131315;font:700 13px/1 var(--body);margin-bottom:12px}
+.suite-step h2{font-size:22px;color:#fff;margin:0 0 8px}
+.suite-step p{font-size:15px;color:var(--on-navy-soft);margin:0 0 12px}
+.suite-step a{color:#fff;font-weight:600;font-size:15px;text-underline-offset:4px}
+.suite-strip{background:var(--sheet);border-bottom:1px solid var(--rule);padding:14px 0;text-align:center;font-size:15px;color:var(--soft)}
+.suite-strip strong{color:var(--ink)}
+.suite-strip a{color:var(--ink);font-weight:600;margin-left:8px;text-underline-offset:4px}
 
 .custom{background:var(--tint);border-radius:var(--r-panel);padding:72px;display:grid;grid-template-columns:7fr 5fr;gap:48px;align-items:center}
 .custom h2{margin-bottom:12px}
@@ -256,6 +270,7 @@ tr:last-child>*{border-bottom:0}
 
 @media (max-width:1180px){
   .fgrid{grid-template-columns:repeat(3,1fr)}
+  .plans{grid-template-columns:repeat(2,1fr)}
 }
 @media (max-width:980px){
   .wrap{padding:0 28px}
@@ -263,7 +278,7 @@ tr:last-child>*{border-bottom:0}
   .hero-grid{padding-top:64px;padding-bottom:64px;min-height:0}
   .hero h1{max-width:none}
   .feat.flip .feat-grid>div{order:0}
-  .trio,.plans,.dev-rows,.vs{grid-template-columns:1fr}
+  .trio,.plans,.dev-rows,.vs,.suite-flow{grid-template-columns:1fr}
   .steps{grid-template-columns:1fr 1fr}
   .trio{max-width:600px;margin:0 auto}
   .plans{max-width:560px;margin:0 auto}

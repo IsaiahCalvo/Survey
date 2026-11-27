@@ -29,8 +29,8 @@ const TOOL_LINKS = [
 ];
 
 const NAV = [
+  ['/kal-voe', 'Kal Voe Suite'],
   ['/features', 'Features'],
-  ['/use-cases', 'Use cases'],
   ['/pricing', 'Pricing'],
   ...(TOOL_LINKS.length ? [['/tools', 'Free PDF tools']] : []),
   ['/faq', 'FAQ'],
@@ -80,9 +80,9 @@ const FAQ = [
   ['Do I need to install anything?', 'No. Survey runs in Chrome, Edge and Safari on computers, tablets and phones. Open surveytool.app and sign in.'],
   ['Does it work with a pen on a tablet?', 'Yes. Apple Pencil or any stylus draws, and your fingers pan and zoom, so you never mark the page by mistake.'],
   ['How do count markers work?', 'Pick a category, tap each item on the plan, and Survey numbers the markers and keeps a running total for every category. Export the totals as a spreadsheet when you are done.'],
-  ['Is Survey free?', 'Yes. The Free plan gives you 1 project, 5 documents and 100MB of storage with no card needed. Pro is $9.99 a month or $99 a year for unlimited projects and documents, 10GB of storage and every survey tool.'],
-  ['Can I cancel Pro any time?', 'Yes. Cancel from your account settings and keep Pro until the end of the period you paid for.'],
-  ['Can my team work on the same drawings?', 'Yes. On Pro, invite people as viewers or editors and edit together live. Enterprise is $20 per user a month, with a minimum of 3 users, for 1TB of storage and priority support. A company admin console and single sign-on are coming soon.'],
+  ['Is Survey free?', 'Yes. The Free plan gives you 1 project, 5 documents, 100MB of storage and every markup tool with no card needed. Single-App Pro starts at $9.99 a month ($99 a year) for Survey, $12 a month for Walkthru, or $25 a month for Plot. The Kal Voe Suite bundles all three apps for $29 per user a month or $290 a year.'],
+  ['Can I cancel any time?', 'Yes. Cancel from your account settings and keep your paid plan until the end of the period you paid for.'],
+  ['Can my team use all three Kal Voe apps together?', 'Yes. The Kal Voe Suite ($29 per user a month or $290 a year) includes Walkthru, Plot and Survey under one account with 50GB per user and live team editing. Enterprise is $45 per user a month (or custom) and adds single sign-on, seat management, 1TB shared team storage, an audit log, priority support, and custom templates and export layouts.'],
   ['Where are my files kept?', 'Your markups save to the cloud so they sync to every device you sign in on. Read the <a href="/privacy.html">privacy policy</a> for the details.'],
   ['Can Survey be set up for my company?', 'Yes. We build custom data exports, company markup templates and team roles. <a href="' + MAIL + '">Email us</a> with how your team works.'],
 ];
@@ -181,26 +181,114 @@ const FREE_TOOL_PICKS = [
 ];
 
 const PLANS = [
-  { name: 'Free', price: '$0', per: '/month', note: 'For trying Survey on one project', cta: 'Start free', short: ['1 project, 5 documents, 100MB', 'Every markup tool, free', 'Count markers with totals'], items: ['1 project', '5 documents', '100MB storage', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with totals', 'Works on every device'] },
-  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', yearly: ['$99', '/year', 'About $8.25 a month, billed once a year'], cta: 'Start free, upgrade in the app', best: true, short: ['Unlimited projects and documents, 10GB', 'Site surveys with data export', 'Spaces, regions and templates', 'Share and edit together live'], items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'Live editing together', 'OneDrive'] },
-  { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, short: ['Everything in Pro for every user', '1TB storage and priority support', 'Custom builds for your company'], items: ['Everything in Pro for every user', '1TB storage', 'Priority support', 'Company admin console and single sign-on: coming soon', 'Custom builds for your company'] },
+  {
+    name: 'Free',
+    price: '$0',
+    per: '/month',
+    note: 'Try Survey on one project, no card needed',
+    cta: 'Start free',
+    short: [
+      '1 project, 5 documents, 100MB',
+      'Every markup tool free (callouts, measure, OCR)',
+      '58 free browser PDF tools — files stay on your device',
+    ],
+    items: [
+      '1 project',
+      '5 documents',
+      '100MB storage',
+      'Every markup tool, including callouts, measuring and OCR',
+      'Count markers with running totals',
+      '58 free browser PDF tools — files never leave your device',
+    ],
+  },
+  {
+    name: 'Single-App Pro',
+    price: '$9.99',
+    per: '/month',
+    note: 'Survey $9.99/mo ($99/yr) · Walkthru $12/mo · Plot $25/mo',
+    yearly: ['$99', '/year', 'Survey $99/yr (save $20) · Walkthru $12/mo · Plot $25/mo'],
+    cta: 'Start free, pick an app',
+    short: [
+      'Pick one app: Survey $9.99 · Walkthru $12 · Plot $25',
+      'Unlimited projects and documents, 10GB storage',
+      'Site surveys with spreadsheet export, spaces & templates',
+      'Live team sharing and OneDrive sync',
+    ],
+    items: [
+      'Choose one app: Survey ($9.99/mo), Walkthru ($12/mo) or Plot ($25/mo)',
+      'Unlimited projects and documents',
+      '10GB storage',
+      'Site surveys with spreadsheet (.xlsx) export',
+      'Spaces, regions and reusable templates',
+      'Live editing together and OneDrive sync',
+    ],
+  },
+  {
+    name: 'Kal Voe Suite',
+    price: '$29',
+    per: '/user/mo',
+    note: 'All 3 apps bundled — or $290/year (save $58)',
+    yearly: ['$290', '/user/yr', 'About $24.17/user/mo, billed yearly (save $58)'],
+    cta: 'Get the full suite',
+    best: true,
+    short: [
+      'All 3 apps included: Walkthru + Plot + Survey',
+      'One Kal Voe account from site walk to closeout',
+      '50GB storage per user',
+      'Shared projects & direct Walkthru → Plot → Survey handoffs',
+    ],
+    items: [
+      'All 3 apps bundled: Walkthru, Plot and Survey',
+      'One Kal Voe account across desktop, tablet and phone',
+      '50GB storage per user',
+      'Direct job handoffs: Walkthru → Plot → Survey',
+      'Everything in Single-App Pro across all 3 apps',
+      'Live team editing and OneDrive sync',
+    ],
+  },
+  {
+    name: 'Enterprise',
+    price: '$45',
+    per: '/user/mo',
+    note: 'Or custom annual contract for larger teams',
+    cta: 'Contact sales',
+    href: MAIL,
+    short: [
+      'Everything in Kal Voe Suite for every seat',
+      'Single sign-on (SSO), seat management & audit log',
+      '1TB shared team storage & priority support',
+      'Custom templates and export layouts',
+    ],
+    items: [
+      'Everything in Kal Voe Suite for every user',
+      'Single sign-on (SSO) and centralized seat management',
+      '1TB shared team storage',
+      'Activity and security audit log',
+      'Priority support',
+      'Custom survey templates, title blocks and export layouts',
+    ],
+  },
 ];
 
 // One glyph that morphs: the sun's core grows while a masked "bite" slides in to
 // carve a crescent, and the rays spin and shrink away (site.css drives it).
 const ICON_THEME = '<svg class="sm" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><mask id="sm-cut"><rect width="24" height="24" fill="#fff"/><circle class="sm-bite" cx="12" cy="12" r="8" fill="#000"/></mask><circle class="sm-core" cx="12" cy="12" r="5" mask="url(#sm-cut)"/><g class="sm-rays"><path d="M12 1.5v2.2M12 20.3v2.2M1.5 12h2.2M20.3 12h2.2M4.6 4.6l1.5 1.5M17.9 17.9l1.5 1.5M4.6 19.4l1.5-1.5M17.9 6.1l1.5-1.5"/></g></svg>';
 
-export const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Survey', url: ORIGIN + '/welcome', logo: ORIGIN + '/logo512.png', email: 'isaiahcalvo123@gmail.com' };
+export const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Kal Voe', url: ORIGIN + '/kal-voe', logo: ORIGIN + '/logo512.png', email: 'isaiahcalvo123@gmail.com' };
 const SOFTWARE = {
-  '@type': 'SoftwareApplication', '@id': ORIGIN + '/#app', name: 'Survey', url: ORIGIN + '/',
+  '@type': 'SoftwareApplication', '@id': ORIGIN + '/#app', name: 'Survey by Kal Voe', url: ORIGIN + '/',
   applicationCategory: 'BusinessApplication', operatingSystem: 'Web browser, macOS, Windows, iPadOS, Android',
-  description: 'PDF markup app for construction drawings. Every markup tool free. Site surveys that export as a spreadsheet, spaces and regions, count markers.',
+  description: 'PDF markup app for construction drawings and part of the Kal Voe Suite (Walkthru, Plot, Survey). Every markup tool free. Site surveys that export as a spreadsheet, spaces and regions, count markers.',
   publisher: { '@id': ORIGIN + '/#org' },
   offers: [
     { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' },
-    { '@type': 'Offer', name: 'Pro monthly', price: '9.99', priceCurrency: 'USD' },
-    { '@type': 'Offer', name: 'Pro yearly', price: '99', priceCurrency: 'USD' },
-    { '@type': 'Offer', name: 'Enterprise', price: '20', priceCurrency: 'USD', description: 'Per user per month, minimum 3 users' },
+    { '@type': 'Offer', name: 'Survey Pro monthly', price: '9.99', priceCurrency: 'USD' },
+    { '@type': 'Offer', name: 'Survey Pro yearly', price: '99', priceCurrency: 'USD' },
+    { '@type': 'Offer', name: 'Walkthru Pro monthly', price: '12', priceCurrency: 'USD' },
+    { '@type': 'Offer', name: 'Plot Pro monthly', price: '25', priceCurrency: 'USD' },
+    { '@type': 'Offer', name: 'Kal Voe Suite monthly (all 3 apps)', price: '29', priceCurrency: 'USD' },
+    { '@type': 'Offer', name: 'Kal Voe Suite yearly (all 3 apps)', price: '290', priceCurrency: 'USD' },
+    { '@type': 'Offer', name: 'Enterprise', price: '45', priceCurrency: 'USD', description: 'Per user per month or custom: SSO, seats, shared storage, audit log, custom templates and layouts' },
   ],
 };
 
@@ -299,7 +387,7 @@ const devs = () => `<div class="devs">
 
 // Monthly or yearly. Only Pro has a yearly price; site.js swaps the words in
 // every [data-m][data-y] element when the switch changes.
-const billing = () => `<div class="bill" role="group" aria-label="Billing period"><span class="bill-pill" aria-hidden="true"></span><button type="button" aria-pressed="true" data-bill="m">Monthly</button><button type="button" aria-pressed="false" data-bill="y">Yearly <span>save $20</span></button></div>`;
+const billing = () => `<div class="bill" role="group" aria-label="Billing period"><span class="bill-pill" aria-hidden="true"></span><button type="button" aria-pressed="true" data-bill="m">Monthly</button><button type="button" aria-pressed="false" data-bill="y">Yearly <span>save up to $58</span></button></div>`;
 const plans = (compact = false) => `<div class="plans${compact ? ' plans-sm' : ''}">${PLANS.map((p) => `
   <article class="plan${p.best ? ' best' : ''}">
     <h3>${p.name}</h3>${p.best ? '<p class="flag">Recommended</p>' : ''}
@@ -431,6 +519,8 @@ const home = page({
   ${FACTS.map(([k, b, t]) => `<div>${svg(k)}<p><b>${b}</b><span>${t}</span></p></div>`).join('\n  ')}
 </div></section>
 
+<div class="suite-strip"><div class="wrap">Part of the <strong>Kal Voe Suite</strong>: <strong>Walkthru</strong> → <strong>Plot</strong> → <strong>Survey</strong>. One account from site walk to closeout. <a href="/kal-voe">Explore the suite →</a></div></div>
+
 <section class="sec" id="how"><div class="wrap">
   <div class="head"><h2>From the drawing set to a spreadsheet</h2><p>Three things we have not found in any other PDF app.</p></div>
   ${showcase(ONLY, 'Only in Survey')}
@@ -533,36 +623,40 @@ ${cta()}`,
 
 // ---------- Pricing ----------
 const ROWS = [
-  ['Projects', '1', 'Unlimited', 'Unlimited'],
-  ['Documents', '5', 'Unlimited', 'Unlimited'],
-  ['Storage', '100MB', '10GB', '1TB'],
-  ['Every markup tool: pen, eraser, shapes, callouts, measure, OCR', 'Yes', 'Yes', 'Yes'],
-  ['Count markers with totals', 'Yes', 'Yes', 'Yes'],
-  ['Site surveys with data export', '', 'Yes', 'Yes'],
-  ['Spaces and regions', '', 'Yes', 'Yes'],
-  ['Survey templates', '', 'Yes', 'Yes'],
-  ['Share with viewers and editors', '', 'Yes', 'Yes'],
-  ['OneDrive', '', 'Yes', 'Yes'],
-  ['Live editing together', '', 'Yes', 'Yes'],
-  ['Priority support', '', '', 'Yes'],
-  ['Company admin console and single sign-on', '', '', 'Coming soon'],
+  ['Price (monthly)', '$0', 'Survey $9.99 · Walkthru $12 · Plot $25', '$29 / user / mo (all 3 apps)', '$45 / user / mo or custom'],
+  ['Yearly option', '$0', 'Survey $99/yr (save $20)', '$290 / user / yr (save $58)', 'Custom annual billing'],
+  ['Apps included', 'Survey (Free)', 'Any 1 app', 'Walkthru + Plot + Survey', 'Walkthru + Plot + Survey'],
+  ['Projects', '1', 'Unlimited', 'Unlimited', 'Unlimited'],
+  ['Documents', '5', 'Unlimited', 'Unlimited', 'Unlimited'],
+  ['Storage', '100MB', '10GB', '50GB / user', '1TB shared team storage'],
+  ['Every markup tool: pen, eraser, shapes, callouts, measure, OCR', 'Yes', 'Yes', 'Yes', 'Yes'],
+  ['58 free browser PDF tools (files stay on your device)', 'Yes', 'Yes', 'Yes', 'Yes'],
+  ['Count markers with totals', 'Yes', 'Yes', 'Yes', 'Yes'],
+  ['Site surveys with spreadsheet (.xlsx) export', '', 'Yes', 'Yes', 'Yes'],
+  ['Spaces, regions and survey templates', '', 'Yes', 'Yes', 'Yes'],
+  ['Share with viewers and editors + live editing', '', 'Yes', 'Yes', 'Yes'],
+  ['OneDrive sync', '', 'Yes', 'Yes', 'Yes'],
+  ['Direct job handoffs: Walkthru → Plot → Survey', '', '', 'Yes', 'Yes'],
+  ['Single sign-on (SSO) & centralized seat management', '', '', '', 'Yes'],
+  ['Activity and security audit log', '', '', '', 'Yes'],
+  ['Priority support & custom templates / export layouts', '', '', '', 'Yes'],
 ];
 // Is it free, can I cancel, can my team use it: the money questions.
 const PRICE_FAQ = [FAQ[7], FAQ[8], FAQ[9]];
 const pricing = page({
   path: '/pricing', crumb: 'Pricing',
-  title: 'Pricing: Free, Pro $9.99 and Enterprise | Survey',
-  desc: 'Survey is free for 1 project and 5 documents. Pro is $9.99 a month or $99 a year. Enterprise is $20 per user a month, minimum 3 users.',
+  title: 'Pricing: Free, Single-App Pro, Kal Voe Suite $29 & Enterprise | Kal Voe',
+  desc: 'Start free with every markup tool and 58 local PDF tools. Single-App Pro is $9.99/mo for Survey, $12/mo for Walkthru, or $25/mo for Plot. Kal Voe Suite bundles all 3 apps for $29/user/mo ($290/yr). Enterprise is $45/user/mo.',
   schema: [SOFTWARE, faqSchema(PRICE_FAQ)],
   body: `<section class="page-head"><div class="wrap">
-  <h1>Start free. Pay when you need more.</h1>
-  <p class="lede">Every markup tool is free, with no time limit. Pro adds site surveys, spaces, templates and sharing for $9.99 a month or $99 a year. Enterprise costs $20 per user a month for teams of 3 or more.</p>
+  <h1>Start free. Pick one app or the full suite.</h1>
+  <p class="lede">Every markup tool is free with no time limit. Pick a single Pro app (Survey $9.99/mo, Walkthru $12/mo, or Plot $25/mo), bundle all three in the Kal Voe Suite for $29/user/mo ($290/yr), or deploy Enterprise at $45/user/mo.</p>
 </div></section>
 <section class="sec tight"><div class="wrap">${billing()}${plans()}</div></section>
 <section class="sec"><div class="wrap">
   <h2 class="center">Compare plans</h2>
   <div class="tbl"><table>
-    <thead><tr><th scope="col"><span class="sr">Feature</span></th><th scope="col">Free</th><th scope="col">Pro</th><th scope="col">Enterprise</th></tr></thead>
+    <thead><tr><th scope="col"><span class="sr">Feature</span></th><th scope="col">Free</th><th scope="col">Single-App Pro</th><th scope="col">Kal Voe Suite</th><th scope="col">Enterprise</th></tr></thead>
     <tbody>${ROWS.map(([f, ...v]) => `<tr><th scope="row">${f}</th>${v.map((x) => `<td>${x === 'Yes' ? '<span class="yes" aria-label="Included">✓</span>' : x || '<span class="no" aria-label="Not included">–</span>'}</td>`).join('')}</tr>`).join('')}</tbody>
   </table></div>
 </div></section>
@@ -669,26 +763,78 @@ const deleteAccount = page({
 </div></section>`,
 });
 
-// Kal Voe: the one account behind Survey, Walkthru and Plot. Google's sign-in
-// page names the app "Kal Voe" with this page as its home page, so it must
-// say the name and show the same logo (public/kal-voe/logo-512.png).
+// Kal Voe: the flagship suite landing page and the one account behind Walkthru,
+// Plot and Survey (#1677, #1678, #1681, #1683, #1684). Google's sign-in screen
+// names the app "Kal Voe" with this page as its home page, so it preserves the
+// Kal Voe name, logo (public/kal-voe/logo-512.png), Google sign-in disclosures,
+// and privacy/terms links.
 const kalVoe = page({
-  path: '/kal-voe', crumb: 'Kal Voe',
-  title: 'Kal Voe | Survey, Walkthru and Plot',
-  desc: 'Kal Voe makes Survey, Walkthru and Plot. One Kal Voe account signs you in to all three.',
-  body: `<section class="page-head"><div class="wrap narrow"><img src="/kal-voe/logo-512.png" alt="Kal Voe logo" width="96" height="96" style="border-radius:12px;display:block;margin-bottom:20px" /><h1>Kal Voe</h1><p class="lede">Kal Voe makes three apps for building systems work: Walkthru, Plot and Survey. One Kal Voe account signs you in to all three.</p></div></section>
+  path: '/kal-voe', crumb: 'Kal Voe Suite',
+  title: 'Kal Voe Suite: Walkthru, Plot and Survey for building systems teams',
+  desc: 'Walk the site in Walkthru, draw shop drawings and schedules in Plot, and run field surveys and PDF markups in Survey. One Kal Voe account across all three apps, plus 58 free local PDF tools.',
+  schema: [SOFTWARE],
+  body: `<section class="hero hero-c"><div class="wrap">
+  <div class="hero-copy">
+    <div class="suite-brand"><img src="/kal-voe/logo-512.png" alt="Kal Voe logo" width="44" height="44" /><span>Kal Voe Suite</span></div>
+    <h1>Walk the site. Draw the plan. Verify the build.</h1>
+    <p class="lede">Kal Voe connects the entire building systems job in three focused apps — Walkthru, Plot and Survey — under one account, from first site walk to final closeout.</p>
+    <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Start free</a><a class="btn ghost lg" href="/pricing">See pricing</a></div>
+    <p class="fine">One Kal Voe account for Google, Microsoft or email sign-in. Start free, no card needed.</p>
+  </div>
+  <div class="suite-flow" aria-label="Walkthru to Plot to Survey workflow">
+    <article class="suite-step">
+      <span class="suite-step-n">1</span>
+      <h2>Walkthru</h2>
+      <p>Walk the site on your phone or tablet. Drop devices onto the floor plan, capture photos, and record voice notes and AI-structured summaries as you go.</p>
+      <a href="https://walkthru.tools">Open Walkthru →</a>
+    </article>
+    <article class="suite-step">
+      <span class="suite-step-n">2</span>
+      <h2>Plot</h2>
+      <p>Turn the site walk into contractor shop drawings: lay out devices, tags, risers, cables, title blocks, and unified patching schedules in Excel and PDF.</p>
+      <a href="/pricing">Included in Kal Voe Suite →</a>
+    </article>
+    <article class="suite-step">
+      <span class="suite-step-n">3</span>
+      <h2>Survey</h2>
+      <p>Mark up construction drawings with every tool free, run checklist site surveys on the plan, and export live spreadsheet reports (.xlsx) for the office.</p>
+      <a href="/welcome">Explore Survey →</a>
+    </article>
+  </div>
+</div></section>
+
+<section class="sec"><div class="wrap">
+  <div class="head"><h2>One suite, three apps, zero re-entry</h2><p>Use any app on its own, or move a project straight from Walkthru into Plot and Survey without retyping a single device tag.</p></div>
+  <div class="dev-rows">
+    <article><h2>1. Walkthru</h2><p>Built for pre-sales and field walks. Drop pins on PDF floor plans, record room audio, snap photos, and invite teammates or clients with a link. <a href="https://walkthru.tools">walkthru.tools</a></p></article>
+    <article><h2>2. Plot</h2><p>Built for design and engineering teams. Author floor-plan shop drawings, title blocks, device tags, cable runs, and unified Excel + installer PDF patching schedules.</p></article>
+    <article><h2>3. Survey</h2><p>Built for field markup and closeout. Every PDF markup tool free, count markers with running totals, spaces and regions, and checklist surveys that export to Excel. <a href="/welcome">surveytool.app</a></p></article>
+  </div>
+</div></section>
+
+<section class="sec band-soft" id="suite-pricing"><div class="wrap">
+  <div class="head"><h2>Simple pricing across every app</h2><p>Start free. Pick one Pro app, or bundle Walkthru, Plot and Survey in the Kal Voe Suite for $29/user/month.</p></div>
+  ${billing()}
+  ${plans(true)}
+  <p class="more-link"><a href="/pricing">Compare all 4 plans</a></p>
+</div></section>
+
+<section class="sec" id="suite-free-tools"><div class="wrap tools-split picks-split">
+  <div class="tools-copy">
+    <h2>${PDF_TOOLS.length} free PDF tools, no sign-up</h2>
+    <p>Merge, split, compress, OCR, compare, sign and convert PDFs right in your browser. Your files never leave your device.</p>
+    <p class="more-link"><a href="/tools">Open all ${PDF_TOOLS.length} free PDF tools</a></p>
+  </div>
+  ${toolPicks()}
+</div></section>
+
 <section class="sec tight"><div class="wrap narrow">
-<h2>The apps</h2>
-<ul class="ticks">
-<li><strong>Walkthru</strong>: walk a site, drop devices on the floor plan, and record photos, voice notes and notes as you go. <a href="https://walkthru.tools">walkthru.tools</a></li>
-<li><strong>Plot</strong>: draw the design: devices, tags, cables and schedules on the plan set.</li>
-<li><strong>Survey</strong>: mark up drawings and run site surveys on the plan in the field. <a href="/welcome">surveytool.app</a></li>
-</ul>
-<h2>One account</h2>
-<p>Sign in to any of the three with Google, Microsoft or your email. It is the same account in every app, on the web and on your phone. Each app can be used on its own.</p>
-<p>Signing in with Google gives us your name, email address and profile picture, for your account. Read the <a href="/privacy.html">privacy policy</a> and <a href="/terms.html">terms</a>.</p>
-<p class="fine">Kal Voe LLC, New Jersey, United States. Questions? <a href="${MAIL}">Email us</a>.</p>
-</div></section>`,
+  <h2>One Kal Voe account</h2>
+  <p>Sign in to Walkthru, Plot and Survey with Google, Microsoft or your email. It is the same account in every app, on the web and on your phone. Each app can also be used on its own.</p>
+  <p>Signing in with Google gives us your name, email address and profile picture, for your account. Read the <a href="/privacy.html">privacy policy</a> and <a href="/terms.html">terms</a>.</p>
+  <p class="fine">Kal Voe LLC, New Jersey, United States. Questions? <a href="${MAIL}">Email us</a>.</p>
+</div></section>
+${cta('Start with one account across Walkthru, Plot and Survey', true)}`,
 });
 
 const longDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
@@ -826,18 +972,25 @@ ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></u
 </urlset>
 `);
 
-  writeFileSync(join(root, 'llms.txt'), `# Survey
+  writeFileSync(join(root, 'llms.txt'), `# Kal Voe & Survey
 
-> Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on computers, tablets and phones at ${ORIGIN}.
+> Kal Voe makes three connected apps for building systems teams — Walkthru (site walks), Plot (contractor shop drawings and schedules), and Survey (PDF markup and site surveys at ${ORIGIN}) — under one account.
 
-Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys with data export, spaces and regions, templates, sharing with viewers and editors, live editing together, OneDrive. Enterprise: $20 per user a month, minimum 3 users, everything in Pro for every user, 1TB, priority support; a company admin console and single sign-on are coming soon.
+Every markup tool in Survey is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects.
+
+Pricing (4 tiers):
+- Free ($0/mo): 1 project, 5 documents, 100MB, every markup tool free, 58 free browser PDF tools (files never leave the device).
+- Single-App Pro: Survey $9.99/mo ($99/yr), Walkthru $12/mo, or Plot $25/mo — unlimited projects and documents, 10GB storage, site surveys with data export, spaces and regions, templates, live editing together, OneDrive.
+- Kal Voe Suite ($29/user/mo or $290/user/yr): all 3 apps bundled (Walkthru + Plot + Survey), 50GB per user, direct job handoffs from site walk to shop drawings to field survey.
+- Enterprise ($45/user/mo or custom): everything in Kal Voe Suite for every seat, SSO, seat management, 1TB shared team storage, audit log, priority support, custom templates and export layouts.
 
 ## Pages
 
-- [Home](${ORIGIN}/welcome): what Survey is and who it is for
+- [Kal Voe Suite](${ORIGIN}/kal-voe): Walkthru, Plot and Survey workflow and unified account
+- [Survey Home](${ORIGIN}/welcome): what Survey is and who it is for
 - [Features](${ORIGIN}/features): site surveys with data export, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
 - [Devices](${ORIGIN}/devices): desktop, tablet and phone
-- [Pricing](${ORIGIN}/pricing): Free, Pro and Enterprise plans
+- [Pricing](${ORIGIN}/pricing): Free, Single-App Pro, Kal Voe Suite and Enterprise plans
 - [FAQ](${ORIGIN}/faq): common questions
 - [Use Survey with your AI](${ORIGIN}/use-with-ai): connect Claude or ChatGPT to read your drawings as you, with your plan and role (read-only); what it can and cannot do, and how to turn it off. MCP server: ${MCP_URL}
 ${USES.map((u) => `- [${u.name}](${ORIGIN}/use-cases/${u.slug}): ${u.desc}`).join('\n')}
