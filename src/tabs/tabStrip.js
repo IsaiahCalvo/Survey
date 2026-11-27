@@ -257,7 +257,14 @@ export function createTabSessionController(getStorage) {
     /** Reopens the saved tabs once per signed-in user; returns the plan or null. */
     restore({ enabled = true, userId, documents, documentsUserId, tabs, onRestore }) {
       noteUser(userId, tabs);
-      if (!enabled || !userId || restoredFor === userId) return null;
+      if (!userId || restoredFor === userId) return null;
+      if (!enabled) {
+        // Phone shell booted on Home: once this user's library has loaded,
+        // mark the session settled so leaving phone device mode later does not
+        // suddenly reopen a stale drawing over the Projects list (#1738).
+        if (documentsUserId === userId) restoredFor = userId;
+        return null;
+      }
       // The stamp proves this user's library load finished, even when it
       // returned no documents (Codex, #817: an empty library must still
       // restore - skipping everything - so the stale session is cleared).

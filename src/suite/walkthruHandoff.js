@@ -303,7 +303,14 @@ export function buildWalkMarkers(input) {
     const page = pageNumber ? pageSize?.(pageNumber) : null;
     const point = page ? pageToPoint(node.x_pct, node.y_pct, page) : null;
     const outline = point && outlineFor ? outlineFor(node) : null;
-    const bounds = point ? ((outline && buildPolygonMarkerBounds(outline)) || buildDotMarkerBounds(point)) : null;
+    const shortSide = page ? Math.min(Number(page.width) || 0, Number(page.height) || 0) : 0;
+    const dotWidth = shortSide > 800
+      ? Math.max(12, Math.min(48, Math.round(shortSide * 0.025)))
+      : undefined;
+    const bounds = point
+      ? ((outline && buildPolygonMarkerBounds(outline))
+        || buildDotMarkerBounds(point, dotWidth ? { width: dotWidth } : undefined))
+      : null;
 
     const fromWalk = {
       name: clean(node.title) || category.name || '',

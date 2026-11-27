@@ -49,6 +49,26 @@ export function linkRows(match, nodeCount = new Map()) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * One display row per Category already matched through the library, naming
+ * the Survey Category it maps to so non-obvious mappings are visible before
+ * adding the walk.
+ * @returns {Array<{nodeTypeId:string,name:string,count:number,categoryId:string,categoryName:string|null}>}
+ */
+export function linkedRows(match, usedTypes = [], nodeCount = new Map(), template = null, moduleId = null) {
+  if (!match?.linked) return [];
+  const count = (id) => (nodeCount instanceof Map ? nodeCount.get(id) : nodeCount?.[id]) || 0;
+  const typesById = new Map((usedTypes || []).map((t) => [t.id, t]));
+  const catsById = new Map(moduleCategories(template, moduleId).map((c) => [c.id, c.name]));
+  return Object.entries(match.linked).map(([nodeTypeId, categoryId]) => ({
+    nodeTypeId,
+    name: clean(typesById.get(nodeTypeId)?.name) || 'Unnamed',
+    count: count(nodeTypeId),
+    categoryId,
+    categoryName: catsById.get(categoryId) || null,
+  }));
+}
+
 /** The picks the screen opens with: the exact-name matches, nothing else. */
 export function startingPicks(rows) {
   const picks = {};

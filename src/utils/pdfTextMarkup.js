@@ -363,6 +363,55 @@ export function textMarkupHitPath(annotation) {
   return quads.map((q) => `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`).join(' ');
 }
 
+/**
+ * Extend a native highlight quad slightly past the first and last letters along
+ * its baseline so the highlight clearly covers the edge glyphs instead of
+ * stopping flush inside them.
+ */
+export function padTextHighlightQuad(quad) {
+  if (!quad) return quad;
+  const x1 = Number(quad.x1);
+  const y1 = Number(quad.y1);
+  const x2 = Number(quad.x2);
+  const y2 = Number(quad.y2);
+  const x3 = Number(quad.x3);
+  const y3 = Number(quad.y3);
+  const x4 = Number(quad.x4);
+  const y4 = Number(quad.y4);
+  if (![x1, y1, x2, y2, x3, y3, x4, y4].every(Number.isFinite)) return quad;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len <= 0.01) return quad;
+  const height = Math.max(1, Math.hypot(x3 - x1, y3 - y1));
+  const pad = Math.max(1.5, Math.min(3, height * 0.18));
+  const ux = dx / len;
+  const uy = dy / len;
+  return {
+    x1: round(x1 - ux * pad),
+    y1: round(y1 - uy * pad),
+    x2: round(x2 + ux * pad),
+    y2: round(y2 + uy * pad),
+    x3: round(x3 - ux * pad),
+    y3: round(y3 - uy * pad),
+    x4: round(x4 + ux * pad),
+    y4: round(y4 + uy * pad),
+  };
+}
+
+/** SVG path `d` for quad-filled text markups (highlight / redact). */
+export function buildTextMarkupQuadPathD(obj, { padHighlight = true } = {}) {
+  const data = obj?.data || {};
+  const type = String(data.markupType || obj?.exportType || '').toLowerCase();
+  const quads = Array.isArray(data.quads) ? data.quads : [];
+  if (data.type !== 'text-markup' || quads.length === 0) return '';
+  const shouldPad = padHighlight && type === 'highlight' && !obj?.isPdfImported;
+  return quads.map((raw) => {
+    const q = shouldPad ? padTextHighlightQuad(raw) : raw;
+    return `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`;
+  }).join(' ');
+}
+
 export function getTextMarkupStackAtPoint(annotations, point, tolerance = 2) {
   const x = Number(point?.x);
   const y = Number(point?.y);

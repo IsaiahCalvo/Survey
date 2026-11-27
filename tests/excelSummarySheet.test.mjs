@@ -75,3 +75,51 @@ test('the Summary sheet fits its columns and lines counts up under their headers
   assert.equal(head.getCell(2).alignment?.horizontal, 'right');
   assert.equal(ws.pageSetup.fitToWidth, 1);
 });
+
+test('counts marker tracking status Done and In progress even without checklist items (#1711)', () => {
+  const noChecklistTemplate = {
+    name: 'QA Template',
+    modules: [{
+      id: 'mod-sec',
+      name: 'Security',
+      categories: [
+        { id: 'cat-cam', name: 'Camera', checklist: [] },
+        { id: 'cat-door', name: 'Door', checklist: [] },
+        { id: 'cat-ic', name: 'Intercom', checklist: [] },
+      ],
+    }],
+  };
+  const markers = {
+    m1: { name: 'Lobby Cam Quokka', moduleId: 'mod-sec', categoryId: 'cat-cam', tracking: { status: 'done' } },
+    m2: { name: 'Main Door', moduleId: 'mod-sec', categoryId: 'cat-door', tracking: { status: 'in-progress' } },
+    m3: { name: 'Front Intercom', moduleId: 'mod-sec', categoryId: 'cat-ic', tracking: { status: 'open' } },
+  };
+  const summary = summarizeSurvey({ template: noChecklistTemplate, markers, rows: true });
+  assert.deepEqual(summary.totals, { items: 3, done: 1, partly: 1, notStarted: 1, withIssues: 0 });
+  const cam = summary.categories.find((c) => c.name === 'Camera');
+  assert.equal(cam.done, 1);
+  assert.equal(cam.notStarted, 0);
+  assert.equal(cam.rows[0].status, 'done');
+});
+
+test('Export data filename and summary heading prefer Project name over template name (#1714)', async () => {
+  const { surveyExportBaseName } = await import('../src/services/excelSummarySheet.js');
+  assert.equal(
+    surveyExportBaseName({ projectName: 'Pass14 South Amboy Chain', documentName: 'Plan.pdf', templateName: 'QA Template' }),
+    'Pass14 South Amboy Chain',
+  );
+  assert.equal(
+    surveyExportBaseName({ projectName: '', documentName: 'Pass14 Plot Roundtrip.pdf', templateName: 'QA Template' }),
+    'Pass14 Plot Roundtrip',
+  );
+  assert.equal(
+    surveyExportBaseName({ projectName: '', documentName: '', templateName: 'QA Template' }),
+    'QA Template',
+  );
+
+  const workbook = new ExcelJS.Workbook();
+  addSummarySheet(workbook, { template: TEMPLATE, markers: MARKERS, title: 'Pass14 South Amboy Chain' });
+  const rows = [];
+  workbook.getWorksheet('Summary').eachRow((row) => rows.push(row.values.slice(1)));
+  assert.deepEqual(rows[0], ['Pass14 South Amboy Chain: summary']);
+});

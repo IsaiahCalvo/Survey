@@ -261,10 +261,13 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
                     onClick={() => setWithComments((on) => !on)}
                   >
                     <span className="xpdf-check" aria-hidden="true">{withComments ? <Icon name="check" size={11} /> : null}</span>
-                    <span className="xpdf-page__label">Also save the comments (.csv)</span>
+                    <span className="xpdf-page__label">Save comments as a separate CSV</span>
                     <span className="xpdf-page__count">{info.commentCount}</span>
                   </button>
                 </div>
+                <p className="pdft-help" data-export-comments-help="">
+                  Comment threads are not drawn on the PDF. Turn this on to download them as a CSV file.
+                </p>
               </div>
             )}
             {restrictOn && (

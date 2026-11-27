@@ -198,7 +198,7 @@ const TYPE_GLYPHS = {
   counter: 'counter',
   surveyMarker: 'survey',
   image: 'image',
-  markup: 'formatHighlight',
+  markup: 'textHighlightTool',
   space: 'spaces',
   region: 'spaces',
   formField: 'textBox',

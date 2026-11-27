@@ -215,6 +215,52 @@ test('a resolved comment pin hides, and resolves or reopens from its card', asyn
   }
 });
 
+// Nightly 'page-comments-one': one way to comment on a page. The Comments
+// panel's + arms the Page comment tool (a click places a Comment pin), a pin
+// thread in the panel names its kind, and a click on it opens the pin's card.
+// An old page thread with no spot still lists, so nothing is lost.
+test('page-comments-one: the Comments panel + places a pin, and the pin thread opens its card', async ({ page }) => {
+  test.setTimeout(180_000);
+  await flagOn(page, true);
+  await page.addInitScript(() => {
+    localStorage.setItem('survey.flag.mark-comments', '1');
+    localStorage.setItem('survey.flag.page-comments-one', '1');
+  });
+  const sheet = await seedSheet('Pins one way');
+  try {
+    const { docId } = await pinRows(sheet.name);
+    const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+    expect((await owner.rpc('add_mark_comment', { p_document_id: docId, p_page_number: 1, p_body: 'Old page thread' })).error).toBeFalsy();
+
+    const { surface, pins } = await openSheet(page, sheet);
+    await page.getByRole('button', { name: 'Comments', exact: true }).filter({ visible: true }).first().click();
+    const panel = page.getByTestId('comments-panel');
+    await expect(panel.locator('[data-comment-thread]').filter({ hasText: 'Old page thread' })).toBeVisible({ timeout: 20_000 });
+
+    const add = page.locator('[data-comment-new]').filter({ visible: true }).first();
+    await expect(add).toHaveAttribute('aria-label', 'Page comment');
+    await add.click();
+    await expect(toolButton(page)).toHaveAttribute('aria-pressed', 'true');
+    await expect(toolButton(page)).toHaveAttribute('data-pin-tool-button', 'comment');
+    await expect(panel.locator('[data-comment-draft]')).toHaveCount(0);
+
+    const box = await surface.boundingBox();
+    await page.mouse.click(box.x + 220, box.y + 240);
+    await expect(composer(page)).toHaveAttribute('data-pin-composer', 'comment');
+    await composer(page).getByLabel('Add a comment').type('Placed from the panel');
+    await composer(page).locator('[data-pin-save]').click();
+    await expect(pins).toHaveCount(1);
+    await expect.poll(async () => (await pinRows(sheet.name)).rows.map((r) => [r.pin_kind, r.body])).toEqual([['comment', 'Placed from the panel']]);
+
+    const row = panel.locator('[data-comment-thread]').filter({ hasText: 'Placed from the panel' });
+    await expect(row.locator('[data-comment-pin="comment"]')).toContainText('Comment on page 1');
+    await row.locator('[data-comment-pin="comment"]').click();
+    await expect(card(page)).toHaveAttribute('data-pin-card', 'comment');
+  } finally {
+    await sheet.remove();
+  }
+});
+
 test('without the flag there is no Pin button and N does nothing', async ({ page }) => {
   test.setTimeout(120_000);
   await flagOn(page, false);

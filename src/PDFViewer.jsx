@@ -430,6 +430,7 @@ import PagePinsHost from './components/pins/PagePinsHost.jsx';
 import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
+import { ARM_PAGE_COMMENT_EVENT, setPagePinsState } from './services/pagePinsStore.js';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
@@ -8848,6 +8849,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [surveyMarkers, showSurveyPanel, selectedModuleId]);
   const printableSurveyMarkersRef = useRef(printableSurveyMarkers);
   printableSurveyMarkersRef.current = printableSurveyMarkers;
+  // Tester #1745: when the Survey panel is open, export carries that module's
+  // markers (same set the screen shows). When the user exports from a drawing
+  // with the Survey panel closed, still include the drawing's saved Survey
+  // markers instead of writing an empty surveyMarkers map.
+  const exportableSurveyMarkers = useMemo(() => {
+    if (isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })) {
+      return printableSurveyMarkers;
+    }
+    const result = {};
+    Object.entries(surveyMarkers || {}).forEach(([annotationId, marker]) => {
+      if (!marker?.pageNumber || !marker?.bounds) return;
+      const entry = surveyMarkerRenderEntry(annotationId, marker, normalizeSurveyMarkerColor);
+      result[annotationId] = {
+        ...marker,
+        annotationId,
+        color: entry ? (entry.color || null) : (marker?.color || null),
+        needsEntity: entry ? entry.needsEntity === true : marker?.needsEntity === true,
+      };
+    });
+    return result;
+  }, [printableSurveyMarkers, surveyMarkers, showSurveyPanel, selectedModuleId]);
+  const exportActiveModuleId = isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
+    ? selectedModuleId
+    : (Object.keys(exportableSurveyMarkers).length > 0 ? '*' : null);
   // Same rule for page objects: the screen decides per object with
   // isAnnotationVisibleInSurveyMode (regular markup hidden inside a template,
   // other modules' markers hidden, region-scoped marks untouched). Print gets
@@ -17287,14 +17312,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // edits are out of sight and any tampering is detected on import (malformed →
       // review). That protects identity without breaking the user's sort/filter.
 
+      const { addSummarySheet, surveyExportBaseName } = await import('./services/excelSummarySheet.js');
+      const exportBaseName = surveyExportBaseName({
+        projectName: markLibraryStore.getState().access.projectName || pdfFile?.projectName || '',
+        documentName: pdfDisplayName,
+        templateName: selectedTemplate?.name,
+      });
+
       // Survey agent testers: a Summary sheet on a new export, not on a sync to
       // a linked workbook (Live Sync writes that one's existing sheets cell by cell).
       if (!targetPath) {
-        const [{ isSurveyAgentEnabled }, { addSummarySheet }] = await Promise.all([
-          import('./agent/surveyAgentFlag.js'),
-          import('./services/excelSummarySheet.js'),
-        ]);
-        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers });
+        const { isSurveyAgentEnabled } = await import('./agent/surveyAgentFlag.js');
+        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers, title: exportBaseName });
       }
 
       (await import('./services/excelOpeningSheet.js')).openOnFirstVisibleSheet(workbook);
@@ -17464,7 +17493,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           }
         } else {
           // Export - show location choice modal
-          const fileName = sanitizeFilename(selectedTemplate?.name || 'survey', 'survey');
+          const fileName = sanitizeFilename(exportBaseName, 'survey');
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
@@ -17483,7 +17512,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${sanitizeFilename(selectedTemplate?.name || 'survey', 'survey')}_export.xlsx`;
+        link.download = `${sanitizeFilename(exportBaseName, 'survey')}_export.xlsx`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -17502,7 +17531,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       showToast('Unable to create the Excel file. Please try again.', 'error');
     }
-  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate]);
+  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate, pdfDisplayName, pdfFile]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -25114,8 +25143,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
           // Owner ruling 2026-09-02: export = regular markup + the open
           // module's Survey Markers (same set and paint the screen shows).
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           onRedactionsSanitized: (count) => { redactionsSanitizedForExport = count; },
@@ -25206,7 +25235,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25228,7 +25258,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       currentPage: pageNum,
       marked: pagesWithMarks({
         annotationsByPage: shown,
-        surveyMarkers: printableSurveyMarkers,
+        surveyMarkers: exportableSurveyMarkers,
       }),
     };
     if (!exportFiltersEnabled) return info;
@@ -25250,12 +25280,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     };
     return {
       ...info,
-      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: printableSurveyMarkers })
+      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: exportableSurveyMarkers })
         .map((a) => ({ ...a, name: nameOf(a.id) })),
       layers: layersEnabled ? filters.exportLayers({ annotationsByPage: shown }, layerState) : [],
       commentCount: comments.filter((c) => !c.deletedAt).length,
     };
-  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, exportableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
 
   // Comments (.csv) beside the exported PDF (export filters).
   const exportCommentsCsv = useCallback(async () => {
@@ -25311,7 +25341,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               showSurveyPanel,
               selectedModuleId,
             })),
-            surveyMarkers: printableSurveyMarkers,
+            surveyMarkers: exportableSurveyMarkers,
           }),
           spaces,
         });
@@ -25332,7 +25362,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const marks = keep({
           annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
+          surveyMarkers: exportableSurveyMarkers,
         });
         bytes = await savePDFWithAnnotationsPdfLib(
           source,
@@ -25347,7 +25377,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             pageTransformations,
             callouts: marks.callouts,
             surveyMarkers: marks.surveyMarkers,
-            activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+            activeModuleId: exportActiveModuleId,
             spaces,
             deletedPdfAnnotations,
             onRedactionsSanitized: (count) => { redactionsSanitized = count; },
@@ -25399,7 +25429,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pageTransformations,
     pdfFile,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     selectedModuleId,
     showSurveyPanel,
     spaces,
@@ -25422,8 +25453,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25445,7 +25476,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -25472,8 +25504,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         exportOptions: {
           documentId: pdfFile?.id || null,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-          surveyMarkers: printableSurveyMarkers,
-          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          surveyMarkers: exportableSurveyMarkers,
+          activeModuleId: exportActiveModuleId,
           spaces,
           deletedPdfAnnotations,
           pageTransformations,
@@ -25495,7 +25527,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pdfFile,
     spaces,
-    printableSurveyMarkers,
+    exportableSurveyMarkers,
+    exportActiveModuleId,
     showSurveyPanel,
     selectedModuleId,
     hiddenLayerIds,
@@ -28000,6 +28033,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
   }, [lastMeasureKind, lastInsertTool, noteToolEnabled, pinsDocOn, linkToolOn, snapshotToolEnabled]);
 
+  // Nightly 'page-comments-one': the Comments panel's + arms the Page comment
+  // tool here (a Comment pin), so a page comment always has a spot, as in
+  // Drawboard. Only the viewer in front takes it; with no pins on this
+  // document the panel falls back to its own page thread.
+  useEffect(() => {
+    if (!isActive || !pinsDocOn) return undefined;
+    const onArm = (event) => {
+      event.preventDefault();
+      setPagePinsState((s) => ({ kind: 'comment', draft: s.draft ? { ...s.draft, kind: 'comment' } : null }));
+      setStampPickerOpen(false);
+      setActiveTool('pin');
+    };
+    window.addEventListener(ARM_PAGE_COMMENT_EVENT, onArm);
+    return () => window.removeEventListener(ARM_PAGE_COMMENT_EVENT, onArm);
+  }, [isActive, pinsDocOn, setActiveTool]);
+
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
@@ -28729,11 +28778,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
-      // Keys belong to an open modal (shortcut sheet, any dialog card): no
-      // tool letters, zoom or Delete acting on the page behind it.
-      // Only a modal that holds focus counts: one still fading out (or
-      // mounted but idle) must not swallow the next tool key.
-      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement) || d.contains(e.target))) return;
+      // Keys belong to an open modal (shortcut sheet, New note, any dialog card):
+      // no tool letters, zoom or Delete acting on the page behind it (#1730).
+      // Only a closing / hidden / inert exit copy is ignored.
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')].some((d) => (
+        !d.closest('[data-motion-state="closing"], [aria-hidden="true"], [inert]')
+        && (d.contains(document.activeElement) || d.contains(e.target) || d.offsetWidth > 0 || d.offsetHeight > 0 || d.getClientRects().length > 0)
+      ))) return;
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =

@@ -205,7 +205,11 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const shellRef = useRef(null);
   const dockRef = useRef(null);
   const listRef = useRef(null);
+  const addButtonRef = useRef(null);
+  const pendingFindToolRef = useRef(false);
   const menuRef = useRef(null);
+  const menuKindRef = useRef(null);
+  menuKindRef.current = menu?.kind || null;
   const sessionRef = useRef(null);
   const apiRef = useRef(api);
   apiRef.current = api;
@@ -296,6 +300,49 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [visible, phone, arm]);
+
+  // Ctrl+K / Cmd+K opens "Find a tool" in the Pin a tool picker (#1758).
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  useEffect(() => {
+    if (phone || !api) return undefined;
+    const onFindToolKeyDown = (event) => {
+      if (event.defaultPrevented || event.__surveyRemapped || event.repeat) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if (String(event.key || '').toLowerCase() !== 'k') return;
+      const inSearch = Boolean(
+        event.target?.matches?.('[data-pin-search="true"]')
+        || document.activeElement?.matches?.('[data-pin-search="true"]'),
+      );
+      if (!inSearch && (isTypingTarget(event.target) || isTypingTarget(document.activeElement))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (menuKindRef.current === 'add') {
+        const input = menuRef.current?.querySelector?.('[data-pin-search="true"]');
+        input?.focus?.();
+        input?.select?.();
+        return;
+      }
+      if (!visibleRef.current) {
+        pendingFindToolRef.current = true;
+        store.setVisible(true);
+        return;
+      }
+      const anchor = addButtonRef.current;
+      if (!anchor) return;
+      setMenu({ kind: 'add', rect: anchor.getBoundingClientRect(), opener: anchor });
+    };
+    window.addEventListener('keydown', onFindToolKeyDown);
+    return () => window.removeEventListener('keydown', onFindToolKeyDown);
+  }, [phone, Boolean(api), store]);
+
+  useEffect(() => {
+    if (!visible || !pendingFindToolRef.current) return;
+    pendingFindToolRef.current = false;
+    const anchor = addButtonRef.current;
+    if (!anchor) return;
+    setMenu({ kind: 'add', rect: anchor.getBoundingClientRect(), opener: anchor });
+  }, [visible]);
 
   // Survey mode has its own pins (owner 2026-11-09): the dock shows the
   // survey set while Survey is on and the markup set everywhere else.
@@ -1334,6 +1381,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           {/* Carried, it keeps its own buttons too (walkthu's does): taking
               them away as it lifts made its tools jump. */}
           <button
+            ref={addButtonRef}
             type="button"
             className="btn chrome-subcontrol btn-ghost pinned-dock__add"
             aria-label="Pin a tool"
@@ -1442,7 +1490,16 @@ function PinnedToolsMenu({
 }) {
   // The picker's search words; a fresh picker starts empty.
   const [query, setQuery] = useState('');
-  useEffect(() => { if (menu.kind !== 'add') setQuery(''); }, [menu.kind]);
+  const searchInputRef = useRef(null);
+  useEffect(() => {
+    if (menu.kind !== 'add') {
+      setQuery('');
+      return;
+    }
+    if (!phone) {
+      searchInputRef.current?.focus?.({ preventScroll: true });
+    }
+  }, [menu.kind, phone]);
   // The "+N" grid: five pins a row, each the dock's own pin button.
   const moreColumns = Math.min(5, Math.max(1, hiddenPins.length));
   const width = menu.kind === 'add' ? 264 : menu.kind === 'more' ? moreColumns * 34 + 10 : 200;
@@ -1546,6 +1603,7 @@ function PinnedToolsMenu({
       <div className="pinned-dock-menu__search">
         <Icon name="search" size={14} color="currentColor" />
         <input
+          ref={searchInputRef}
           type="search"
           value={query}
           placeholder="Find a tool"
@@ -1555,6 +1613,7 @@ function PinnedToolsMenu({
           enterKeyHint="done"
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
+            if (event.key !== 'Escape') event.stopPropagation();
             const firstSurvey = surveyFound.find((choice) => !choiceIsPinned(choice, pins));
             if (event.key === 'Enter' && searching && firstSurvey) {
               event.preventDefault();

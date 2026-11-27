@@ -22,7 +22,7 @@ import Spinner from '../components/Spinner';
 import { Z_INDEX } from '../theme';
 import { matchCategories } from '../suite/walkthruHandoff.js';
 import {
-  canAddToModule, categoryForPicks, keepPicks, linkRows, linksToSave,
+  canAddToModule, categoryForPicks, keepPicks, linkedRows, linkRows, linksToSave,
   loadSavedJobCategoryLinks, moduleCategories, startingPicks,
 } from '../suite/categoryLinks.js';
 import '../components/PdfToolsDialog.css';
@@ -44,7 +44,12 @@ export function handoffSummary(result) {
     ? [result.added ? `${plural(result.added, 'marker')} added` : '', result.updated ? `${plural(result.updated, 'marker')} updated` : ''].filter(Boolean).join(', ')
     : 'No markers added');
   const missing = (result.notInModule || []).reduce((sum, m) => sum + m.count, 0);
-  if (missing) parts.push(`${plural(missing, 'node')} not in this Module`);
+  const missingWord = !result.source || result.source === 'Walkthru'
+    ? 'node'
+    : result.source === 'Plot'
+      ? 'device'
+      : 'item';
+  if (missing) parts.push(`${plural(missing, missingWord)} not in this Module`);
   if (result.unplaced) parts.push(`${plural(result.unplaced, 'marker')} with no spot yet`);
   if (result.defaultNodes) {
     parts.push(!result.source || result.source === 'Walkthru'
@@ -298,12 +303,15 @@ export default function WalkthruHandoffDialog({
               <div className="xpdf-section" data-walkthru-handoff-match="">
                 <span className="xpdf-label">Categories</span>
                 {usedTypes.length === 0 && <span>{fromJob ? 'This job file has no devices with a Category.' : 'This walk has no nodes with a Category.'}</span>}
-                {Object.keys(match.linked).map((typeId) => {
-                  const type = usedTypes.find((t) => t.id === typeId);
-                  const viaLibrary = Boolean(type?.library_entry_id);
+                {linkedRows(match, usedTypes, nodeCount, template, moduleId).map((item) => {
+                  const type = usedTypes.find((t) => t.id === item.nodeTypeId);
+                  const viaLibrary = Boolean(type?.library_entry_id) || !fromJob;
+                  const statusLabel = viaLibrary
+                    ? (item.categoryName ? `linked in the library as ${item.categoryName}` : 'linked in the library')
+                    : (item.categoryName ? `remembered for this Module as ${item.categoryName}` : 'remembered for this Module');
                   return (
-                    <div key={typeId} className="wt-link__linked">
-                      {type?.name} ({nodeCount.get(typeId) || 0}): {viaLibrary || !fromJob ? 'linked in the library' : 'remembered for this Module'}
+                    <div key={item.nodeTypeId} className="wt-link__linked">
+                      {item.name} ({item.count}): {statusLabel}
                     </div>
                   );
                 })}
