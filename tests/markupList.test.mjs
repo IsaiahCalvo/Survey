@@ -80,7 +80,7 @@ test('CSV quotes and blocks spreadsheet formulas', () => {
 
 test('panel and flag are wired', () => {
   assert.ok(PANEL_IDS.includes('markups'));
-  assert.equal(FEATURE_FLAGS['markup-list']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['markup-list']?.stage, 'rollout');
 });
 
 test('counters list as Counter, with their disc colour and an ISO time (R3-M B3)', async () => {

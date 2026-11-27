@@ -48,5 +48,5 @@ test('the viewer passes the extras only under the flag', () => {
   assert.match(src, /const \[pageMenuExtrasEnabled\] = useState\(\(\) => isFeatureOn\('page-menu-extras'\)\);/);
   assert.match(src, /\.\.\.\(pageMenuExtrasEnabled \? \{\n\s+move: \(page, offset\) =>/);
   const flags = readFileSync(new URL('../src/featureFlags.js', import.meta.url), 'utf8');
-  assert.match(flags, /'page-menu-extras': Object\.freeze\(\{[^}]*stage: 'beta'/);
+  assert.match(flags, /'page-menu-extras': Object\.freeze\(\{[^}]*stage: 'rollout'/);
 });

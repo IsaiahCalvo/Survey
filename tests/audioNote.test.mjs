@@ -13,7 +13,7 @@ const BADGE = 'data:image/png;base64,iVBORw0KGgo=';
 const CLIP = 'data:audio/webm;codecs=opus;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYEC';
 
 test('audio-note is a Nightly beta flag with a seeded off row', () => {
-  assert.equal(FEATURE_FLAGS['audio-note']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['audio-note']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261113190000_drawboard_tool_flags.sql'), /\('audio-note', 'off'/);
 });
 

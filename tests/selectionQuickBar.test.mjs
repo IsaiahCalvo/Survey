@@ -367,7 +367,7 @@ test('by kind: align goes left, centre, right, left', () => {
 });
 
 test('by kind: a beta flag with its database row, and the bar reads it', () => {
-  assert.equal(FEATURE_FLAGS['mark-bar-by-kind']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['mark-bar-by-kind']?.stage, 'rollout');
   assert.match(readFileSync(new URL('../supabase/migrations/20261117030000_mark_bar_by_kind_flag.sql', import.meta.url), 'utf8'), /\('mark-bar-by-kind', 'off'/);
   const bar = readFileSync(new URL('../src/components/SelectionQuickBar.jsx', import.meta.url), 'utf8');
   assert.match(bar, /isFeatureOn\('mark-bar-by-kind'\)/);

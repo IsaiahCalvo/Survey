@@ -47,7 +47,7 @@ test('the box as pixels never leaves the canvas and is at least 1 x 1', () => {
 });
 
 test('flag and wiring', () => {
-  assert.equal(FEATURE_FLAGS['snapshot-tool'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['snapshot-tool'].stage, 'rollout');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /isFeatureOn\('snapshot-tool'\)/);
   assert.match(viewer, /snapshotToolEnabled \? \[\{ id: 'snapshot'/);

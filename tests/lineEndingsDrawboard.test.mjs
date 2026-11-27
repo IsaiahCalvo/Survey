@@ -168,7 +168,7 @@ test('the reverse heads export as their PDF names; a filled one writes /IC', () 
 });
 
 test('every surface draws the shapes kind, and the pickers are wired behind the flag', () => {
-  assert.equal(FEATURE_FLAGS['line-endings']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['line-endings']?.stage, 'rollout');
   assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /case 'shapes': return renderArrowheadShapes\(spec\);/);
   assert.match(read('src/utils/annotationCanvasPainter.js'), /if \(spec\.kind === 'shapes'\) \{/);
   assert.match(read('src/utils/lassoObjectAdapter.js'), /if \(spec\.kind === 'shapes'\) \{/);

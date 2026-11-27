@@ -29,7 +29,7 @@ test('groups list marks newest first with their layer names', () => {
 });
 
 test('flag is beta; the bar, AppShell and the viewer feed it; a migration adds the row', () => {
-  assert.equal(FEATURE_FLAGS['author-chip'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['author-chip'].stage, 'rollout');
   assert.match(read('src/components/SelectionQuickBar.jsx'), /isFeatureOn\('author-chip'\)/);
   assert.match(read('src/AppShell.jsx'), /layerState=\{leftRailApi\?\.layerState \|\| null\}/);
   assert.match(read('src/PDFViewer.jsx'), /isFeatureOn\('author-chip'\)\) \? annotationsByPage : null/);

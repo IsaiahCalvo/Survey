@@ -25,7 +25,7 @@ function opList(items) {
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
 test('flag: snap-content is a Nightly beta flag', () => {
-  assert.equal(FEATURE_FLAGS['snap-content']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['snap-content']?.stage, 'rollout');
 });
 
 test('index: an end beats a nearer midpoint or line; then midpoint; then the nearest point on the line', () => {

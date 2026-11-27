@@ -116,7 +116,7 @@ test('Set as default: saved per device, stands in only when the file set none', 
 });
 
 test('wiring: beta flag, migration, dialog fields, viewer default', () => {
-  assert.match(read('src/featureFlags.js'), /'measure-plus': Object\.freeze\(\{[\s\S]*?stage: 'beta'/);
+  assert.match(read('src/featureFlags.js'), /'measure-plus': Object\.freeze\(\{[\s\S]*?stage: 'rollout'/);
   assert.match(read('supabase/migrations/20261110179000_measure_plus_flag.sql'), /\('measure-plus', 'off'/);
   const dialog = read('src/components/MeasureScaleDialog.jsx');
   assert.match(dialog, /isFeatureOn\('measure-plus'\)/);

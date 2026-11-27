@@ -13,7 +13,7 @@ test('the live band takes the highlight colour and opacity', () => {
 });
 
 test('flag, button and wiring', () => {
-  assert.equal(FEATURE_FLAGS['text-highlight-tool'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['text-highlight-tool'].stage, 'rollout');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   // 2026-11-13: the Underline / Squiggle / Strikethrough / Redact text tools
   // ('text-markup-tools') share the mode, so it carries the kind.
