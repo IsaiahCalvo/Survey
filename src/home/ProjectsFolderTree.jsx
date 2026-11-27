@@ -1260,7 +1260,7 @@ export default function ProjectsFolderTree({
       dropProps={dropProps}
     >
       <div className="projects-tab-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>
+      <div className="projects-desktop-layout">
         {/* LEFT — tree */}
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* Owner 2026-10-01: one header line - the page's one gold action

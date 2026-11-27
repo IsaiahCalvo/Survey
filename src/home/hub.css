@@ -147,8 +147,17 @@
   .survey-hub .documents-desktop-label { display: none; }
   .survey-hub .header > .actions { min-width: 0; }
   /* The search field gives up width first (down to 150px). */
-  .survey-hub .documents-desktop-search { flex: 0 1 240px; min-width: 150px; }
-  .survey-hub .documents-desktop-search .hub-search { width: 100% !important; }
+  .survey-hub .documents-desktop-search,
+  .survey-hub .projects-desktop-search { flex: 0 1 240px; min-width: 120px; max-width: 100%; }
+  .survey-hub .documents-desktop-search .hub-search,
+  .survey-hub .projects-desktop-search .hub-search { width: 100% !important; }
+}
+/* Narrow desktop window (e.g. 505×775): layout stays desktop (w42), so let the
+   header wrap its search/actions onto a second row instead of clipping them. */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) and (max-width: 780px) {
+  .survey-hub .header { flex-wrap: wrap; row-gap: 8px; }
+  .survey-hub .header > .actions { flex: 1 1 180px; max-width: 100%; justify-content: flex-end; }
+  .survey-hub .projects-desktop-search { flex: 1 1 160px; }
 }
 /* ─────────────────────────────────────────────────────────────────────────
    THE HOME BUTTON SYSTEM — four kinds, no fifth (owner, 2026-09-22)
@@ -5890,6 +5899,25 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    tablet (beside the 260px project list), so the fixed 90px "Last edited by"
    column squeezed Name to nothing. Narrow panes show the editor as an avatar
    and give Name the room; wide (desktop) panes keep the original columns. */
+/* Narrow desktop window (#1801): layout stays desktop by owner rule (w42), so
+   when the Projects tab body is too tight for a 260px list beside the open
+   project pane, stack the list above the open pane so the project name and
+   header actions (Add files, From Walkthru, From a job file, Send back to Plot)
+   keep the full pane width and stay reachable instead of clipping off-screen. */
+.projects-tab-body { container-type: inline-size; }
+.projects-desktop-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+@container (max-width: 620px) {
+  .projects-desktop-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(140px, 34%) minmax(0, 1fr);
+  }
+}
 .projects-open-pane { container-type: inline-size; }
 /* 184px: at 148 a two-word name lost its end ("QA Test (agen…"). */
 .projects-open-body { grid-template-columns: minmax(0, 1fr) 184px; }
