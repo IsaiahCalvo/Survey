@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 const COLLECTOR_URL = 'https://analytics.agent-native.com/api/analytics/track';
 const PRODUCTION_ORIGINS = new Set([
   'https://surveytool.app',
@@ -7,8 +9,15 @@ const PRODUCTION_ORIGINS = new Set([
 ]);
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_EVENTS_PER_MINUTE = 60;
+const MAX_TOKEN_CACHE = 500;
+const TOKEN_CACHE_TTL_MS = 5 * 60_000;
 const BLOCKED_PROPERTY = /(?:email|filename|fileName|token|password|authorization|content|annotation)/i;
 const requestWindows = new Map();
+const tokenValidationCache = new Map();
+
+export const resetAnalyticsAuthCache = () => {
+  tokenValidationCache.clear();
+};
 
 const isAllowedBrowserOrigin = (origin) => {
   if (PRODUCTION_ORIGINS.has(origin)) return true;
@@ -104,7 +113,42 @@ const supabaseConfiguration = () => ({
   serviceKey: String(process.env.SUPABASE_SERVICE_ROLE_KEY || ''),
 });
 
-const authenticatedUserId = async (token, configuration) => {
+const jwtExpiryMs = (token) => {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return typeof payload?.exp === 'number' && Number.isFinite(payload.exp) ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+};
+
+const tokenDigest = (token) => createHash('sha256').update(token).digest('hex');
+
+const cacheTokenVerdict = (key, userId, expiresAt, now) => {
+  tokenValidationCache.set(key, { userId, expiresAt });
+  if (tokenValidationCache.size > MAX_TOKEN_CACHE) {
+    for (const [entryKey, entry] of tokenValidationCache) {
+      if (entry.expiresAt <= now) tokenValidationCache.delete(entryKey);
+    }
+    while (tokenValidationCache.size > MAX_TOKEN_CACHE) {
+      const oldestKey = tokenValidationCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      tokenValidationCache.delete(oldestKey);
+    }
+  }
+};
+
+const authenticatedUserId = async (token, configuration, now = Date.now()) => {
+  const expMs = jwtExpiryMs(token);
+  if (expMs !== null && expMs <= now) return '';
+
+  const key = tokenDigest(token);
+  const cached = tokenValidationCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.userId;
+  if (cached) tokenValidationCache.delete(key);
+
   const result = await fetch(`${configuration.url}/auth/v1/user`, {
     headers: {
       apikey: configuration.serviceKey,
@@ -112,11 +156,26 @@ const authenticatedUserId = async (token, configuration) => {
     },
     signal: AbortSignal.timeout(5_000),
   }).catch(() => null);
-  if (!result?.ok) return '';
+  if (!result) return '';
+  if (!result.ok) {
+    // Cache definitive auth rejections (401/403 bad_jwt) briefly so repeated
+    // events from a stale/revoked session stop hammering Supabase Auth (#1793).
+    // Never cache 5xx so transient Auth outages recover immediately.
+    if (result.status === 401 || result.status === 403) {
+      const ttlUntil = expMs !== null ? Math.min(now + TOKEN_CACHE_TTL_MS, expMs) : now + TOKEN_CACHE_TTL_MS;
+      if (ttlUntil > now) cacheTokenVerdict(key, '', ttlUntil, now);
+    }
+    return '';
+  }
   const user = await result.json().catch(() => null);
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(user?.id || ''))
+  const userId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(user?.id || ''))
     ? String(user.id)
     : '';
+  if (userId) {
+    const ttlUntil = expMs !== null ? Math.min(now + TOKEN_CACHE_TTL_MS, expMs) : now + TOKEN_CACHE_TTL_MS;
+    if (ttlUntil > now) cacheTokenVerdict(key, userId, ttlUntil, now);
+  }
+  return userId;
 };
 
 // This RPC serializes reservations inside Postgres. Unlike a module-level Map,
