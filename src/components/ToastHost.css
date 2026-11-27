@@ -29,6 +29,10 @@
    edge on its own clock. While it is up the stack stands just above it, so
    the two never overlap (UndoToast sets the flag on <html>). */
 html[data-undo-toast-open] .app-toast-host {
+  bottom: 68px;
+}
+
+html[data-undo-toast-open] .app-toast-host[data-bottom-clear="1"] {
   bottom: max(68px, var(--app-toast-bottom, 68px));
 }
 

@@ -89,6 +89,7 @@ export default function ToastHost() {
     if (!host) return;
     if (isPhoneLayout()) {
       host.style.removeProperty('--app-toast-bottom');
+      delete host.dataset.bottomClear;
       let chromeBottom = 0;
       PHONE_TOP_CHROME_SELECTORS.forEach((selector) => {
         document.querySelectorAll(selector).forEach((el) => {
@@ -118,8 +119,10 @@ export default function ToastHost() {
     if (minChromeTop < window.innerHeight) {
       const clearance = Math.max(24, Math.round(window.innerHeight - minChromeTop) + 12);
       host.style.setProperty('--app-toast-bottom', `${clearance}px`);
+      host.dataset.bottomClear = '1';
     } else {
       host.style.removeProperty('--app-toast-bottom');
+      delete host.dataset.bottomClear;
     }
   }, [toasts]);
 
