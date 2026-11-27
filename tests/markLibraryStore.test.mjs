@@ -1,10 +1,11 @@
 // Mark library store (src/markLibrary/markLibraryStore.js): the signed-out
 // library lives in this browser; signed in it reads and writes
-// mark_library_items, follows realtime changes, and moves / duplicates /
-// deletes items the way the panel expects.
+// mark_library_items, and moves / duplicates / deletes items the way the
+// panel expects. KAL-853: it reads only while something that shows the
+// library retains it, and holds no realtime channel.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMarkLibraryStore, libraryErrorMessage } from '../src/markLibrary/markLibraryStore.js';
+import { createMarkLibraryStore, libraryErrorMessage, REFRESH_AFTER_MS } from '../src/markLibrary/markLibraryStore.js';
 
 const memory = new Map();
 globalThis.localStorage = {
@@ -22,6 +23,17 @@ const payload = (left = 10) => ({
   extent: { left, top: 10, width: 20, height: 20 },
 });
 
+function fakeDocument() {
+  const listeners = new Set();
+  return {
+    visibilityState: 'visible',
+    listeners,
+    addEventListener(type, fn) { if (type === 'visibilitychange') listeners.add(fn); },
+    removeEventListener(type, fn) { listeners.delete(fn); },
+    show() { this.visibilityState = 'visible'; listeners.forEach((fn) => fn()); },
+  };
+}
+
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // A tiny stand-in for supabase-js: one table, eq/in filters, insert/update/
@@ -30,6 +42,7 @@ function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: fa
   const rows = [];
   const handlers = [];
   let seq = 0;
+  const counts = { reads: 0, channels: 0 };
   const query = (table) => {
     const filters = [];
     let op = 'select';
@@ -60,6 +73,7 @@ function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: fa
           hit.forEach((r) => rows.splice(rows.indexOf(r), 1));
           return resolve({ data: hit.map((r) => ({ id: r.id })), error: null });
         }
+        counts.reads += window && window[0] > 0 ? 0 : 1; // one per library read, not per page
         // Like PostgREST: the asked-for range, never more than max_rows.
         const page = window ? hit.slice(window[0], window[1] + 1) : hit;
         return resolve({ data: page.slice(0, maxRows), error: null });
@@ -75,7 +89,10 @@ function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: fa
       assert.equal(args.p_project_id, 'p1');
       return { data: access, error: null };
     },
+    get reads() { return counts.reads; },
+    get channels() { return counts.channels; },
     channel() {
+      counts.channels += 1;
       const ch = { on(_type, filter, fn) { handlers.push({ filter, fn }); return ch; }, subscribe() { return ch; } };
       return ch;
     },
@@ -89,6 +106,7 @@ test('signed out: the personal library is kept in this browser', async () => {
   memory.clear();
   const store = createMarkLibraryStore({ supabase: null, available: () => false });
   store.setContext({ userId: null, projectId: 'p1' });
+  store.retain();
   await tick();
   assert.equal(store.getState().project.status, 'none');
   assert.deepEqual(store.addableLibraries(), ['personal']);
@@ -97,6 +115,7 @@ test('signed out: the personal library is kept in this browser', async () => {
   await store.renameItem(saved.id, 'Big box');
   const again = createMarkLibraryStore({ supabase: null, available: () => false });
   again.setContext({ userId: null, projectId: null });
+  again.retain();
   await tick();
   assert.deepEqual(again.getState().personal.items.map((it) => it.name), ['Big box']);
   const removed = await again.deleteItems([saved.id]);
@@ -113,6 +132,7 @@ test('signed in: loads both libraries, the project name and what the person may 
   );
   const store = createMarkLibraryStore({ supabase, available: () => true });
   store.setContext({ userId: 'me', projectId: 'p1' });
+  store.retain();
   await tick(); await tick();
   const state = store.getState();
   assert.deepEqual(state.personal.items.map((it) => it.id), ['x1']);
@@ -120,31 +140,80 @@ test('signed in: loads both libraries, the project name and what the person may 
   assert.equal(state.access.projectName, 'Tower B');
   assert.deepEqual(store.addableLibraries(), ['personal', 'project']);
   assert.equal(store.canChange(state.project.items[0]), false, 'someone else\'s project item');
-  const listens = supabase.handlers.map((h) => `${h.filter.event}:${h.filter.filter || '*'}`).sort();
-  // Adds and edits filtered to my items and the project's; deletes can't be
-  // filtered (realtime only sends the old id), so they come unfiltered.
-  assert.deepEqual(listens, [
-    'DELETE:*', 'INSERT:created_by=eq.me', 'INSERT:project_id=eq.p1', 'UPDATE:created_by=eq.me', 'UPDATE:project_id=eq.p1',
-  ]);
+  assert.equal(supabase.channels, 0, 'no realtime channel (KAL-853)');
 });
 
-test('realtime: a teammate\'s new item arrives, a delete leaves', async () => {
+test('KAL-853: opening a document reads nothing until the library is shown', async () => {
   const supabase = fakeSupabase();
-  const store = createMarkLibraryStore({ supabase, available: () => true });
+  let clock = 1_000_000;
+  const store = createMarkLibraryStore({ supabase, available: () => true, now: () => clock, doc: null });
   store.setContext({ userId: 'me', projectId: 'p1' });
   await tick(); await tick();
-  supabase.fire({ eventType: 'INSERT', new: { id: 'n1', library: 'project', project_id: 'p1', created_by: 'them', name: 'New', tags: [], payload: payload() } });
-  assert.deepEqual(store.getState().project.items.map((it) => it.id), ['n1']);
-  supabase.fire({ eventType: 'INSERT', new: { id: 'n2', library: 'project', project_id: 'p9', created_by: 'me', name: 'Elsewhere', tags: [], payload: payload() } });
-  assert.deepEqual(store.getState().project.items.map((it) => it.id), ['n1'], 'my item in another project stays out');
-  supabase.fire({ eventType: 'DELETE', old: { id: 'n1' } });
-  assert.equal(store.getState().project.items.length, 0);
+  assert.equal(supabase.reads, 0, 'no read on document open');
+  assert.equal(store.getState().personal.status, 'idle');
+  const release = store.retain();
+  await tick(); await tick();
+  assert.equal(supabase.reads, 2, 'personal + project read when the panel opens');
+  assert.equal(store.getState().personal.status, 'ready');
+  release();
+  // Opened again soon: what was read is shown, nothing new is read.
+  clock += 30_000;
+  store.retain()();
+  await tick();
+  assert.equal(supabase.reads, 2);
+  // Opened again later: read again.
+  clock += REFRESH_AFTER_MS;
+  const releaseLater = store.retain();
+  await tick(); await tick();
+  assert.equal(supabase.reads, 4);
+  releaseLater();
+  // Another document (other project) while nothing shows the library: no read.
+  store.setContext({ userId: 'me', projectId: 'p2' });
+  await tick();
+  assert.equal(supabase.reads, 4);
+  assert.equal(supabase.channels, 0, 'never a realtime channel');
+});
+
+test('KAL-853: a document switch while the panel is open reads the new project', async () => {
+  const supabase = fakeSupabase();
+  const store = createMarkLibraryStore({ supabase, available: () => true, doc: null });
+  store.setContext({ userId: 'me', projectId: 'p1' });
+  const release = store.retain();
+  await tick(); await tick();
+  const before = supabase.reads;
+  store.setContext({ userId: 'me', projectId: null });
+  await tick(); await tick();
+  assert.equal(supabase.reads, before + 1, 'personal library read again for the new context');
+  assert.equal(store.getState().project.status, 'none');
+  release();
+});
+
+test('KAL-853: coming back to the tab refreshes only while the panel is open', async () => {
+  const supabase = fakeSupabase();
+  let clock = 5_000_000;
+  const doc = fakeDocument();
+  const store = createMarkLibraryStore({ supabase, available: () => true, now: () => clock, doc });
+  store.setContext({ userId: 'me', projectId: 'p1' });
+  const release = store.retain();
+  await tick(); await tick();
+  const first = supabase.reads;
+  clock += REFRESH_AFTER_MS;
+  doc.show();
+  await tick(); await tick();
+  assert.equal(supabase.reads, first + 2, 'refreshed on return');
+  release();
+  assert.equal(doc.listeners.size, 0, 'no listener once the panel closes');
+  clock += REFRESH_AFTER_MS;
+  doc.show();
+  await tick();
+  assert.equal(supabase.reads, first + 2);
 });
 
 test('move to the project library copies there and removes the personal one; duplicate names a copy', async () => {
   const supabase = fakeSupabase();
   const store = createMarkLibraryStore({ supabase, available: () => true });
   store.setContext({ userId: 'me', projectId: 'p1' });
+  store.retain();
   await tick(); await tick();
   const [item] = await store.addItems([{ library: 'personal', name: 'Door tag', tags: ['Doors'], payload: payload() }]);
   const [copy] = await store.duplicateItems([item.id]);
@@ -162,6 +231,7 @@ test('saving to a project library you can\'t add to is refused before the reques
   const supabase = fakeSupabase({ access: { can_read: true, can_add: false, can_manage: false, project_name: 'P' } });
   const store = createMarkLibraryStore({ supabase, available: () => true });
   store.setContext({ userId: 'me', projectId: 'p1' });
+  store.retain();
   await tick(); await tick();
   await assert.rejects(store.addItems([{ library: 'project', name: 'x', payload: payload() }]), /permission/);
   const huge = payload();
@@ -183,6 +253,7 @@ test('a library bigger than one API page loads in full', async () => {
   }
   const store = createMarkLibraryStore({ supabase, available: () => true });
   store.setContext({ userId: 'me', projectId: null });
+  store.retain();
   for (let i = 0; i < 6; i += 1) await tick(); // eslint-disable-line no-await-in-loop
   assert.equal(store.getState().personal.items.length, 1500);
 });
@@ -191,6 +262,7 @@ test('undoing a delete puts a project item back in its own project, never the op
   const supabase = fakeSupabase();
   const store = createMarkLibraryStore({ supabase, available: () => true });
   store.setContext({ userId: 'me', projectId: 'p1' });
+  store.retain();
   await tick(); await tick();
   await assert.rejects(
     store.addItems([{ library: 'project', projectId: 'p2', name: 'From A', payload: payload() }]),
