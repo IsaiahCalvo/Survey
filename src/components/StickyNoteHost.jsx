@@ -35,7 +35,20 @@ export function StickyNoteDialog({ open, mode = 'create', initial = null, readOn
     setColor(initial?.color || NOTE_COLORS[0].hex);
   }, [open, initial]);
   useEffect(() => {
-    if (open && !readOnly) fieldRef.current?.focus?.();
+    if (!open || readOnly) return undefined;
+    const focusField = () => fieldRef.current?.focus?.();
+    focusField();
+    const frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(focusField) : 0;
+    const onFocusIn = (event) => {
+      const card = fieldRef.current?.closest?.('[role="dialog"]');
+      if (!card || card.contains(event.target)) return;
+      focusField();
+    };
+    document.addEventListener('focusin', onFocusIn, true);
+    return () => {
+      if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+      document.removeEventListener('focusin', onFocusIn, true);
+    };
   }, [open, readOnly]);
   const title = mode === 'edit' ? 'Note' : 'New note';
   const submit = () => onSubmit?.({ text, color });
@@ -47,7 +60,12 @@ export function StickyNoteDialog({ open, mode = 'create', initial = null, readOn
       onClose={onCancel}
       width={360}
       zIndex={1400}
-      cardProps={{ 'data-sticky-note-dialog': mode }}
+      cardProps={{
+        'data-sticky-note-dialog': mode,
+        onKeyDown: (e) => {
+          if (e.key !== 'Escape') e.stopPropagation();
+        },
+      }}
       footer={readOnly ? (
         <button type="button" className="hub-btn dialog-touch-pad" onClick={onCancel}>Close</button>
       ) : (
@@ -61,6 +79,7 @@ export function StickyNoteDialog({ open, mode = 'create', initial = null, readOn
     >
       <textarea
         ref={fieldRef}
+        data-autofocus=""
         className="dialog-prompt-input sticky-note-dialog__text"
         aria-label="Note"
         placeholder="Write a note"
@@ -69,7 +88,15 @@ export function StickyNoteDialog({ open, mode = 'create', initial = null, readOn
         rows={5}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            e.stopPropagation();
+            submit();
+            return;
+          }
+          if (e.key !== 'Escape') e.stopPropagation();
+        }}
       />
       {!readOnly && (
         <>
