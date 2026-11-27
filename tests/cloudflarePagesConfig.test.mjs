@@ -85,6 +85,41 @@ test('Cloudflare Pages middleware redirects /privacy and /terms and serves SPA f
   assert.equal(spaRes.headers.get('Content-Security-Policy'), APP_CSP);
 });
 
+test('Kal Voe serves the suite at the apex root and leaves the Survey root alone', async () => {
+  const next = async () => new Response('Survey app');
+  const env = {
+    ASSETS: {
+      fetch: async (request) => {
+        assert.equal(new URL(request.url).pathname, '/kal-voe/');
+        return new Response('Kal Voe Suite');
+      },
+    },
+  };
+  const apex = await middleware({ request: new Request('https://kalvoe.com/?utm_source=test'), env, next });
+  assert.equal(await apex.text(), 'Kal Voe Suite');
+  assert.equal(apex.headers.get('Content-Security-Policy'), MARKETING_CSP);
+
+  const survey = await middleware({ request: new Request('https://surveytool.app/'), env, next });
+  assert.equal(await survey.text(), 'Survey app');
+  assert.equal(survey.headers.get('Content-Security-Policy'), APP_CSP);
+});
+
+test('Kal Voe redirects www and the old suite path, and sends sign-up to Survey', async () => {
+  const fetchRoute = (url) => middleware({ request: new Request(url), env: {} });
+
+  const www = await fetchRoute('https://www.kalvoe.com/pricing?utm_source=test');
+  assert.equal(www.status, 308);
+  assert.equal(www.headers.get('location'), 'https://kalvoe.com/pricing?utm_source=test');
+
+  const oldSuitePath = await fetchRoute('https://kalvoe.com/kal-voe/?utm_source=test');
+  assert.equal(oldSuitePath.status, 308);
+  assert.equal(oldSuitePath.headers.get('location'), 'https://kalvoe.com/?utm_source=test');
+
+  const signUp = await fetchRoute('https://kalvoe.com/?signup=1');
+  assert.equal(signUp.status, 302);
+  assert.equal(signUp.headers.get('location'), 'https://surveytool.app/?signup=1');
+});
+
 test('Cloudflare Pages /api/onedrive-open redirects valid Microsoft Graph items with 303', async () => {
   const form = new URLSearchParams({
     items: JSON.stringify([

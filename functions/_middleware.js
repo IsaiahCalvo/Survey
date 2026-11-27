@@ -1,5 +1,8 @@
 import { applySecurityHeaders } from './_lib/securityHeaders.js';
 
+const KAL_VOE_HOST = 'kalvoe.com';
+const KAL_VOE_PAGE = '/kal-voe/';
+
 const PERMANENT_REDIRECTS = new Map([
   ['/privacy', '/privacy.html'],
   ['/terms', '/terms.html'],
@@ -23,6 +26,31 @@ export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
   const { pathname } = url;
+
+  if (url.hostname === `www.${KAL_VOE_HOST}`) {
+    url.protocol = 'https:';
+    url.hostname = KAL_VOE_HOST;
+    url.port = '';
+    return applySecurityHeaders(Response.redirect(url.toString(), 308), pathname);
+  }
+
+  if (url.hostname === KAL_VOE_HOST && (request.method === 'GET' || request.method === 'HEAD')) {
+    if (pathname === '/kal-voe' || pathname === KAL_VOE_PAGE) {
+      url.pathname = '/';
+      return applySecurityHeaders(Response.redirect(url.toString(), 308), KAL_VOE_PAGE);
+    }
+
+    if (pathname === '/') {
+      if (url.searchParams.has('signin') || url.searchParams.has('signup')) {
+        const surveyUrl = new URL('/', 'https://surveytool.app');
+        surveyUrl.search = url.search;
+        return applySecurityHeaders(Response.redirect(surveyUrl.toString(), 302), KAL_VOE_PAGE);
+      }
+
+      const page = await env.ASSETS.fetch(new Request(new URL(KAL_VOE_PAGE, url), request));
+      return applySecurityHeaders(page, KAL_VOE_PAGE);
+    }
+  }
 
   const redirectTarget = PERMANENT_REDIRECTS.get(pathname);
   if (redirectTarget) {
