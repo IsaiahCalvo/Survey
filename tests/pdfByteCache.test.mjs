@@ -394,3 +394,17 @@ test('an upload seed still running when the same file is replaced here does not 
   assert.equal(await seeding, false);
   assert.equal((await cache.stats()).entries, 0);
 });
+
+test('replaceDocument invalidates forked path and re-seeds pdfByteCache with the replaced bytes', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const src = readFileSync(resolve(process.cwd(), 'src/hooks/useDatabase.js'), 'utf8');
+  const start = src.indexOf('const replaceDocument = useCallback');
+  const end = src.indexOf('const downloadDocument = useCallback', start);
+  assert.ok(start > 0 && end > start, 'expected replaceDocument block');
+  const block = src.slice(start, end);
+  assert.match(block, /await pdfByteCache\(\)\.removePath\(saved\.filePath\)/);
+  assert.match(block, /await pdfByteCache\(\)\.removePath\(filePath\)/);
+  assert.match(block, /await seedPdfCacheFromUpload\(\{/);
+  assert.match(block, /path:\s*saved\.filePath/);
+});
