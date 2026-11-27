@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const { default: handler, redactAnalyticsString } = await import('../api/analytics/track.mjs');
+const { default: handler, redactAnalyticsString, resetAnalyticsAuthCache } = await import('../api/analytics/track.mjs');
 const migration = readFileSync(new URL('../supabase/migrations/20260811130000_analytics_ingestion_daily_cap.sql', import.meta.url), 'utf8');
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TOKEN = 'eyJheader.payload.signature';
@@ -47,11 +47,13 @@ const withConfiguredProxy = async (fetchImplementation, run) => {
     url: process.env.SUPABASE_URL,
     serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   };
+  resetAnalyticsAuthCache();
   process.env.AGENT_NATIVE_ANALYTICS_PUBLIC_KEY = 'anpk_server_only_test';
   process.env.SUPABASE_URL = 'https://survey-project.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-secret';
   globalThis.fetch = fetchImplementation;
   try { return await run(); } finally {
+    resetAnalyticsAuthCache();
     globalThis.fetch = previous.fetch;
     for (const [key, value] of [
       ['AGENT_NATIVE_ANALYTICS_PUBLIC_KEY', previous.publicKey],
@@ -220,4 +222,54 @@ test('analytics string redaction removes URLs, email addresses, and bearer/JWT-l
   const output = redactAnalyticsString(input);
   assert.doesNotMatch(output, /example\.test|person@example|abc\.def\.ghi|eyJabcdefghijk/);
   assert.match(output, /\[URL\]|\[EMAIL\]|\[TOKEN\]/);
+});
+
+const makeJwt = (payload) => {
+  const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${header}.${body}.sig12345`;
+};
+
+test('analytics proxy short-circuits expired JWTs and caches 403 bad_jwt + valid verdicts (#1793)', async () => {
+  const expiredToken = makeJwt({ sub: USER_ID, exp: Math.floor(Date.now() / 1000) - 60 });
+  const revokedToken = makeJwt({ sub: USER_ID, exp: Math.floor(Date.now() / 1000) + 3600, jti: 'revoked' });
+  const validToken = makeJwt({ sub: USER_ID, exp: Math.floor(Date.now() / 1000) + 3600, jti: 'valid' });
+  const outageToken = makeJwt({ sub: USER_ID, exp: Math.floor(Date.now() / 1000) + 3600, jti: 'outage' });
+  let authCalls = 0;
+  let outageAttempt = 0;
+
+  await withConfiguredProxy(async (url, options = {}) => {
+    if (String(url).endsWith('/auth/v1/user')) {
+      authCalls += 1;
+      const bearer = String(options.headers?.Authorization || '').replace(/^Bearer\s+/, '');
+      if (bearer === revokedToken) return response(false, { error_code: 'bad_jwt' }, 403);
+      if (bearer === outageToken) {
+        outageAttempt += 1;
+        return outageAttempt === 1 ? response(false, {}, 504) : response(true, { id: USER_ID }, 200);
+      }
+      return response(true, { id: USER_ID }, 200);
+    }
+    if (String(url).includes('/rpc/reserve_analytics_ingestion_slot')) return response(true, true);
+    return response(true, {});
+  }, async () => {
+    // Expired JWT never hits /auth/v1/user.
+    assert.equal((await invoke({ ip: '198.51.100.11', token: expiredToken })).statusCode, 401);
+    assert.equal(authCalls, 0);
+
+    // Revoked JWT returning 403 bad_jwt hits Auth once, then negative cache absorbs repeats.
+    assert.equal((await invoke({ ip: '198.51.100.12', token: revokedToken })).statusCode, 401);
+    assert.equal((await invoke({ ip: '198.51.100.12', token: revokedToken })).statusCode, 401);
+    assert.equal((await invoke({ ip: '198.51.100.12', token: revokedToken })).statusCode, 401);
+    assert.equal(authCalls, 1);
+
+    // Valid JWT hits Auth once, then positive cache serves subsequent events.
+    assert.equal((await invoke({ ip: '198.51.100.13', token: validToken })).statusCode, 202);
+    assert.equal((await invoke({ ip: '198.51.100.13', token: validToken })).statusCode, 202);
+    assert.equal(authCalls, 2);
+
+    // Transient 504 from Auth is NOT negative-cached so the next call recovers.
+    assert.equal((await invoke({ ip: '198.51.100.14', token: outageToken })).statusCode, 401);
+    assert.equal((await invoke({ ip: '198.51.100.14', token: outageToken })).statusCode, 202);
+    assert.equal(authCalls, 4);
+  });
 });

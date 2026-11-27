@@ -96,7 +96,12 @@ export const resolveSurveyAnalyticsEndpoint = (locationLike = globalThis.window?
 
 export const classifyAnalyticsDelivery = ({ ok, status, contentType = '', body = null }) => {
   const normalizedStatus = Number(status) || 0;
-  if (!ok) return { ok: false, reason: 'http_error', status: normalizedStatus };
+  if (!ok) {
+    if (normalizedStatus === 401 && body?.error === 'invalid_session') {
+      return { ok: false, reason: 'invalid_session', status: 401, disabled: true };
+    }
+    return { ok: false, reason: 'http_error', status: normalizedStatus };
+  }
   if (!String(contentType).toLowerCase().includes('application/json') || !body || typeof body !== 'object') {
     return { ok: false, reason: 'unexpected_response', status: normalizedStatus };
   }
@@ -107,7 +112,12 @@ export const classifyAnalyticsDelivery = ({ ok, status, contentType = '', body =
 export const isRetryableAnalyticsDelivery = (result) => result?.reason === 'network_error'
   || result?.reason === 'collector_rejected'
   || result?.reason === 'authentication_required'
-  || (result?.reason === 'http_error' && [0, 401, 408, 425, 429, 500, 502, 503, 504].includes(result.status));
+  || (result?.reason === 'http_error' && [0, 408, 425, 429, 500, 502, 503, 504].includes(result.status));
+
+// Remember a JWT that /api/analytics/track already rejected as invalid_session
+// so this tab stops resending the same revoked/stale token until Supabase Auth
+// rotates to a new access_token (#1793).
+let rejectedAccessToken = '';
 
 const publishDeliveryStatus = (result) => {
   if (typeof window === 'undefined') return;
@@ -128,7 +138,7 @@ const publishDeliveryStatus = (result) => {
   }
 };
 
-const observeDelivery = async (request) => {
+const observeDelivery = async (request, accessToken = '') => {
   try {
     const response = await request;
     const contentType = response.headers?.get?.('content-type') || response.contentType || '';
@@ -141,6 +151,9 @@ const observeDelivery = async (request) => {
       const off = { ok: false, reason: 'not_configured', status: 503, disabled: true };
       publishDeliveryStatus(off);
       return off;
+    }
+    if (Number(response.status) === 401 && accessToken) {
+      rejectedAccessToken = accessToken;
     }
     const result = classifyAnalyticsDelivery({
       ok: response.ok,
@@ -202,10 +215,21 @@ const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
     publishDeliveryStatus(result);
     return result;
   }
+  if (rejectedAccessToken && accessToken === rejectedAccessToken) {
+    const result = { ok: false, reason: 'invalid_session', status: 401, disabled: true };
+    publishDeliveryStatus(result);
+    return result;
+  }
+  if (rejectedAccessToken && accessToken !== rejectedAccessToken) {
+    rejectedAccessToken = '';
+  }
 
   if (!answeredOnce && firstAnswer) {
     await firstAnswer;
     if (collectorNotConfigured) return { ok: false, reason: 'not_configured', status: 503, disabled: true };
+    if (rejectedAccessToken && accessToken === rejectedAccessToken) {
+      return { ok: false, reason: 'invalid_session', status: 401, disabled: true };
+    }
   }
 
   const request = window.location.protocol === 'file:'
@@ -220,7 +244,7 @@ const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
       body: JSON.stringify(payload),
       keepalive: true,
     });
-  const delivery = observeDelivery(request);
+  const delivery = observeDelivery(request, accessToken);
   if (!answeredOnce && !firstAnswer) {
     firstAnswer = delivery.finally(() => { answeredOnce = true; firstAnswer = null; });
   }

@@ -137,6 +137,12 @@ test('analytics delivery rejects HTML fallbacks and collector-declined responses
     contentType: 'application/json',
     body: { accepted: true },
   }), { ok: true, reason: null, status: 202 });
+  assert.deepEqual(classifyAnalyticsDelivery({
+    ok: false,
+    status: 401,
+    contentType: 'application/json',
+    body: { error: 'invalid_session' },
+  }), { ok: false, reason: 'invalid_session', status: 401, disabled: true });
 });
 
 test('native auth, network, quota, and collector failures remain retryable', () => {
@@ -146,6 +152,8 @@ test('native auth, network, quota, and collector failures remain retryable', () 
   assert.equal(isRetryableAnalyticsDelivery({ reason: 'http_error', status: 503 }), true);
   assert.equal(isRetryableAnalyticsDelivery({ reason: 'collector_rejected', status: 202 }), true);
   assert.equal(isRetryableAnalyticsDelivery({ reason: 'unexpected_response', status: 200 }), false);
+  assert.equal(isRetryableAnalyticsDelivery({ reason: 'invalid_session', status: 401 }), false);
+  assert.equal(isRetryableAnalyticsDelivery({ reason: 'http_error', status: 401 }), false);
 });
 
 test('packaged Electron analytics uses authenticated main-process transport without Origin:null', () => {
