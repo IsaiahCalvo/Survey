@@ -391,7 +391,7 @@ import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoR
 import { registerAgentDocument } from './agent/webmcp';
 import { findHighlightQuads, ocrWordsToWords, textItemsToWords } from './agent/planText';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
-import { findSurveyMarkerAt, markerPaintsAbove } from './utils/surveyMarkerHitTest.js';
+import { findNearestSurveyMarkerAt, findSurveyMarkerAt, markerPaintsAbove } from './utils/surveyMarkerHitTest.js';
 import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
@@ -4583,7 +4583,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (!hit) return;
       // Owner 2026-10-22: a Survey Marker is picked by Pan like any mark - on
       // empty page, or when it paints above the mark found there.
-      const marker = findSurveyMarkerAt(e);
+      const marker = findNearestSurveyMarkerAt(e, undefined, { touchPad: 16, mousePad: 0 });
       if (marker && (hit.kind === 'page' || markerPaintsAbove(marker, hit))) {
         setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
         setPendingSurveyMarkerSelection({ pageNumber: marker.pageNumber, annotationId: marker.annotationId, tick: Date.now() });
@@ -4800,6 +4800,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (event.detail > 1) return;
       if (event.pointerType === 'touch' && event.timeStamp - start.timeStamp > 350) return;
       const hit = resolveAnnotationAt(event);
+      const marker = findNearestSurveyMarkerAt(event);
+      if (marker && (!hit || !['annotation', 'callout'].includes(hit.kind) || markerPaintsAbove(marker, hit))) {
+        if (window.getSelection?.()?.toString()) return;
+        try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
+        liveTextSelectionRef.current = null;
+        setLiveTextSelection(null);
+        setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+        setPendingSurveyMarkerSelection({
+          pageNumber: marker.pageNumber,
+          annotationId: marker.annotationId,
+          tick: Date.now(),
+        });
+        return;
+      }
       if (!hit || !['annotation', 'callout'].includes(hit.kind)) {
         clearAnnotationSelectionForContextChange('text-select-empty-click');
         return;
