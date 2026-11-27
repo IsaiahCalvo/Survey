@@ -115,11 +115,16 @@ export default function ToastHost() {
           role="status"
           aria-live="polite"
           aria-hidden={t.leaving ? 'true' : undefined}
-          onClick={() => {
+          onClick={(event) => {
+            event.stopPropagation();
             store.dismiss(t.id);
             window.dispatchEvent(new CustomEvent(TOAST_USER_DISMISS_EVENT, { detail: { id: t.key } }));
           }}
           {...withOwnHandlers(tip('Dismiss', 'above'), {
+            onPointerDown: (event) => {
+              event.stopPropagation();
+              store.pause(t.id);
+            },
             onMouseEnter: () => store.pause(t.id),
             onMouseLeave: () => store.resume(t.id),
             onFocus: () => store.pause(t.id),

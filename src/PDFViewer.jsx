@@ -25263,14 +25263,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and how many comments the document has, for "Comments (.csv)".
   const [exportFiltersEnabled] = useState(() => isFeatureOn('export-filters'));
   const exportPageInfo = useCallback(async () => {
-    const { pagesWithMarks } = await import('./utils/exportPdfModes.js');
+    const [{ pagesWithMarks }, { buildExportableSurveyMarkers }] = await Promise.all([
+      import('./utils/exportPdfModes.js'),
+      import('./utils/exportFlattenedMarks.js'),
+    ]);
     const shown = withoutHiddenLayers(annotationsByPage, hiddenLayerIds);
+    const exportSurveyMarkers = buildExportableSurveyMarkers(surveyMarkers, {
+      normalizeColor: normalizeSurveyMarkerColor,
+    });
     const info = {
       numPages: Number(numPages) || 0,
       currentPage: pageNum,
       marked: pagesWithMarks({
         annotationsByPage: shown,
-        surveyMarkers: exportableSurveyMarkers,
+        surveyMarkers: exportSurveyMarkers,
       }),
     };
     if (!exportFiltersEnabled) return info;
@@ -25292,12 +25298,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     };
     return {
       ...info,
-      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: exportableSurveyMarkers })
+      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: exportSurveyMarkers })
         .map((a) => ({ ...a, name: nameOf(a.id) })),
       layers: layersEnabled ? filters.exportLayers({ annotationsByPage: shown }, layerState) : [],
       commentCount: comments.filter((c) => !c.deletedAt).length,
     };
-  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, exportableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, surveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
 
   // Comments (.csv) beside the exported PDF (export filters).
   const exportCommentsCsv = useCallback(async () => {
@@ -25342,19 +25348,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (mode === 'plain') {
         bytes = await bytesKit.stripMarkupAnnotations(source, { pageTransformations });
       } else if (mode === 'flattened') {
-        const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
-          await import('./utils/pdfAnnotationsPdfLib');
+        const [{ buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint }, { buildFlattenedExportMarks }] =
+          await Promise.all([
+            import('./utils/pdfAnnotationsPdfLib'),
+            import('./utils/exportFlattenedMarks.js'),
+          ]);
+        // #1769: Flattened PDF burns in every checked layer's marks (both drawn
+        // marks/callouts and Survey markers) regardless of active Survey mode.
         const payload = buildPrintableRegularAnnotationPayload({
-          ...keep({
-            annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
-            callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
-              moduleId: callout?.moduleId ?? null,
-              regionId: callout?.regionId ?? null,
-              showSurveyPanel,
-              selectedModuleId,
-            })),
-            surveyMarkers: exportableSurveyMarkers,
-          }),
+          ...keep(buildFlattenedExportMarks({
+            annotationsByPage,
+            callouts,
+            surveyMarkers,
+            hiddenLayerIds,
+            normalizeSurveyMarkerColor,
+          })),
           spaces,
         });
         bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(source, payload.annotationsByPage, pageSizes, {
@@ -25441,6 +25449,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     pageSizes,
     pageTransformations,
     pdfFile,
+    surveyMarkers,
     exportableSurveyMarkers,
     exportActiveModuleId,
     selectedModuleId,
