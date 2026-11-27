@@ -14,7 +14,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 
 test('equation-tool is a Nightly beta flag with a seeded off row', () => {
-  assert.equal(FEATURE_FLAGS['equation-tool']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['equation-tool']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261113190000_drawboard_tool_flags.sql'), /\('equation-tool', 'off'/);
 });
 

@@ -108,7 +108,7 @@ test('export writes the own subject as /Subj and re-import keeps it', async () =
 });
 
 test('the flag is beta, the panel and page layer use it, and a migration adds its row', () => {
-  assert.equal(FEATURE_FLAGS['mark-subject'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['mark-subject'].stage, 'rollout');
   const panel = readFileSync(new URL('../src/components/SelectionPropertiesPanel.jsx', import.meta.url), 'utf8');
   assert.match(panel, /isFeatureOn\('mark-subject'\)/);
   assert.match(panel, /op: 'subject'/);

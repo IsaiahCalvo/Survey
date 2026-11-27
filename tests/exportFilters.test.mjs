@@ -110,10 +110,10 @@ test('comments CSV file name sits beside the PDF', () => {
   assert.equal(commentsCsvFileName(''), 'Document comments.csv');
 });
 
-test('export-filters is a Nightly beta flag with a migration row', () => {
+test('export-filters is a rollout flag with a migration row', () => {
   const flag = FEATURE_FLAGS.find?.((f) => f.key === 'export-filters') ?? FEATURE_FLAGS['export-filters'];
   assert.ok(flag, 'flag registered');
-  assert.equal(flag.stage, 'beta');
+  assert.equal(flag.stage, 'rollout');
   const sql = readFileSync(new URL('../supabase/migrations/20261110131000_export_filters_flag.sql', import.meta.url), 'utf8');
   assert.match(sql, /'export-filters'/);
 });

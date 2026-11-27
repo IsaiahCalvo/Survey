@@ -19,10 +19,10 @@ import { planSelectionQuickBar } from '../src/utils/selectionQuickBar.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('new tools are Nightly-only beta flags with a seeded off row', () => {
+test('new tools are rollout flags with a seeded off row', () => {
   const migration = read('supabase/migrations/20261113190000_drawboard_tool_flags.sql');
   for (const key of ['text-markup-tools', 'laser-pointer', 'measure-angle', 'note-tool']) {
-    assert.equal(FEATURE_FLAGS[key]?.stage, 'beta', key);
+    assert.equal(FEATURE_FLAGS[key]?.stage, 'rollout', key);
     assert.match(migration, new RegExp(`\\('${key}', 'off'`), key);
   }
 });
@@ -122,7 +122,7 @@ test('Angle measure: three points, degrees at the middle one, no scale needed', 
   const { mobileMeasureItems } = await import('../src/mobile/mobileShapeRail.js');
   assert.deepEqual(mobileMeasureItems(false).map((m) => m.key), ['length', 'area', 'perimeter', 'scale']);
   assert.deepEqual(mobileMeasureItems(false, { angle: true }).map((m) => m.key), ['length', 'area', 'perimeter', 'angle', 'scale']);
-  assert.equal(FEATURE_FLAGS['measure-angle']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['measure-angle']?.stage, 'rollout');
   assert.match(read('src/components/SVGAnnotationLayer.jsx'), /measureMode === 'angle' && next\?\.points\?\.length >= ANGLE_MEASURE_POINTS\) commitPolyDraft\('finish'\)/);
 });
 

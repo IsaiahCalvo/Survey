@@ -14,7 +14,7 @@ const rect = (extra = {}) => ({ id: 'r1', type: 'rect', left: 100, top: 50, widt
 const inside = (p, o, eps = 1e-6) => p.x >= o.left - eps && p.x <= o.left + o.width + eps && p.y >= o.top - eps && p.y <= o.top + o.height + eps;
 
 test('hatch-fill is a Nightly beta flag with a seeded off row', () => {
-  assert.equal(FEATURE_FLAGS['hatch-fill']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['hatch-fill']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261113190000_drawboard_tool_flags.sql'), /\('hatch-fill', 'off'/);
 });
 

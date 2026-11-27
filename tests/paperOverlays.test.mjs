@@ -69,7 +69,7 @@ test('CSS paints under the marks, hides in print; flag is beta with a migration'
   assert.match(css, /html\[data-paper-overlay\] \.survey-pdfjs-page-div > \.survey-pdfjs-page-canvas \+ div::before/);
   assert.match(css, /@media print[\s\S]*display: none/);
   assert.match(css, /var\(--survey-page-scale, 1\)/);
-  assert.equal(FEATURE_FLAGS['paper-overlays'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['paper-overlays'].stage, 'rollout');
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /isFeatureOn\('paper-overlays'\)/);
   const migration = readFileSync(new URL('../supabase/migrations/20261116020000_paper_overlays_flag.sql', import.meta.url), 'utf8');

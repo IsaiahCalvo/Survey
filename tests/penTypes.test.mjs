@@ -21,7 +21,7 @@ const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
 test("three pens with Drawboard's names; Basic is the default and the flag is beta", () => {
   assert.deepEqual(PEN_TYPES.map((t) => `${t.label}: ${t.sub}`), ['Basic: Fixed width', 'Pro: Variable width', 'Calligraphy: Dynamic width']);
   assert.equal(activePenType(), 'basic');
-  assert.equal(FEATURE_FLAGS['pen-types']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['pen-types']?.stage, 'rollout');
 });
 
 test('Pro with a pen follows the measured pressure curve', () => {

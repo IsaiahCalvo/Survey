@@ -104,7 +104,7 @@ test('the phone menu adds the new tools only with the flag, in the desktop order
 });
 
 test('the flag is beta and seeded, and the viewer wires the depth', () => {
-  assert.equal(FEATURE_FLAGS['measure-depth'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['measure-depth'].stage, 'rollout');
   const migration = readFileSync(new URL('../supabase/migrations/20261109190000_measure_depth_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'measure-depth', 'off'/);
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');

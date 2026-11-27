@@ -47,7 +47,7 @@ test('ink bounds find the inked pixels, or none', () => {
 });
 
 test('flag, button, placement and migration', () => {
-  assert.equal(FEATURE_FLAGS['signature-tool'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['signature-tool'].stage, 'rollout');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /signatureToolEnabled \? \[\{ id: 'signature'/);
   assert.match(viewer, /\|\| signatureToolEnabled\) && \(\s*<MarkLibraryPlacementLayer/);

@@ -60,7 +60,7 @@ test('a paint shows unless it is none, see-through or under 5%', () => {
 });
 
 test('a beta flag with its migration, wired into the eraser and both mode toggles', () => {
-  assert.equal(FEATURE_FLAGS['eraser-look']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['eraser-look']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110144000_eraser_look_flag.sql'), /\('eraser-look', 'off'/);
   const eraser = read('src/components/FabricEraserCanvas.jsx');
   assert.match(eraser, /eraserLookRef\.current = isFeatureOn\('eraser-look'\)/);
