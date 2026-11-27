@@ -140,7 +140,9 @@ export async function onRequest(context) {
   // Serve /index.html for app routes (e.g. /teams, /agent-link, /share/...) while
   // letting real static marketing pages (/welcome, /pricing, /tools/*) serve normally.
   if (response.status === 404 && isSpaFallbackCandidate(pathname, request.method) && env?.ASSETS?.fetch) {
-    const indexRes = await env.ASSETS.fetch(new Request(new URL('/index.html', url.origin).toString(), request));
+    // Ask for "/" rather than "/index.html": Pages answers /index.html with a
+    // 308 redirect to "/", which is not ok() and left app routes as 404s.
+    const indexRes = await env.ASSETS.fetch(new Request(new URL('/', url.origin).toString(), request));
     if (indexRes.ok) {
       response = new Response(indexRes.body, {
         status: 200,

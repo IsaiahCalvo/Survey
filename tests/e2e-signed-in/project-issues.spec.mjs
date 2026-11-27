@@ -85,6 +85,14 @@ for (const layout of LAYOUTS) {
       const editorName = 'Eddie Editor';
 
       await page.addInitScript(() => { localStorage.setItem('survey.flag.project-issues', '1'); });
+      const createIssue = async (name) => {
+        await press(layout, visible(page.getByRole('button', { name: 'New issue' })));
+        const dialog = visible(page.getByTestId('new-item-dialog'));
+        await expect(dialog).toBeVisible();
+        await dialog.getByTestId('new-item-title').fill(name);
+        await press(layout, dialog.getByRole('button', { name: 'Create issue' }));
+        await expect(dialog).toBeHidden();
+      };
       try {
         await signInAt(page, E2E_ACCOUNTS.owner, layout.app ? '/?mobileNav=tabs&nativeShell=capacitor' : '/');
         if (layout.phone && !layout.app) {
@@ -103,15 +111,14 @@ for (const layout of LAYOUTS) {
         await expect(projectRow).toBeVisible({ timeout: 45_000 });
         await press(layout, projectRow);
 
-        // 1. The Issues tab, then New issue: ISS-1 opens its details.
+        // 1. The Issues tab, then New issue: it asks for a title first
+        // (#1743), and Create issue opens ISS-1's details.
         await press(layout, visible(page.locator('[data-project-items-tabs]').getByRole('tab', { name: 'Issues' })));
-        await press(layout, visible(page.getByRole('button', { name: 'New issue' })));
+        await createIssue('Door 3 hinge loose');
         const detail = visible(page.locator('[data-item-detail]'));
         await expect(detail).toBeVisible();
         await expect(detail.locator('[data-item-code]')).toHaveText('ISS-1');
-        const title = detail.getByTestId('item-title');
-        await title.fill('Door 3 hinge loose');
-        await title.press('Enter');
+        await expect(detail.getByTestId('item-title')).toHaveValue('Door 3 hinge loose');
         await expect.poll(async () => (await admin.from('project_items').select('title, number, status').eq('project_id', projectId)).data)
           .toEqual([{ title: 'Door 3 hinge loose', number: 1, status: 'draft' }]);
         // On Hold is a Task's status: the database refuses it on an Issue.
@@ -217,7 +224,7 @@ for (const layout of LAYOUTS) {
         // A new issue never reuses a number.
         await press(layout, visible(page.getByTestId('item-list-menu')));
         await press(layout, visible(page.getByRole('menuitem', { name: /Show unarchived issues/ })));
-        await press(layout, visible(page.getByRole('button', { name: 'New issue' })));
+        await createIssue('Door 4 closer slams');
         await expect(visible(page.locator('[data-item-detail] [data-item-code]'))).toHaveText('ISS-2');
         await press(layout, visible(page.locator('[data-item-detail]').getByRole('button', { name: 'Close details' })));
 

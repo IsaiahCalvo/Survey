@@ -66,7 +66,7 @@ test('review stamps: place Approved with my name and the date, undo it, copy one
     const before = new Set(await markIds(page));
     const approved = page.locator('[data-mark-library-item="review-stamp:approved"]');
     await approved.click();
-    await expect(approved).toHaveAttribute('aria-pressed', 'true');
+    await expect(approved.locator('.mark-library__trigger')).toHaveAttribute('aria-pressed', 'true');
     await page.mouse.move(target.x, target.y, { steps: 4 });
     await expect(page.locator('[data-mark-library-ghost]')).toBeVisible();
     await page.mouse.click(target.x, target.y);
