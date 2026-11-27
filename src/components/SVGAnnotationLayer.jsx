@@ -248,7 +248,15 @@ import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
-import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds, tapSurveyMarkerBox } from '../survey/markerShapes.js';
+import {
+  buildDotMarkerBounds,
+  buildPolygonMarkerBounds,
+  buildStrokeMarkerBounds,
+  effectiveMarkerBoxRect,
+  effectiveMarkerStrokeWidth,
+  tapSurveyMarkerBox,
+} from '../survey/markerShapes.js';
+import { isPhoneLayout } from '../utils/layoutMode.js';
 import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
 import { prewarmSmartFillPage } from '../survey/smartFillProvider.js';
@@ -5777,9 +5785,21 @@ const SVGAnnotationLayerBody = memo(({
     // carries the selection handles.
     const projectedShape = projectSurveyMarkerEntryShape(entry.surveyMarker, bbox);
     const hitInteractive = annotationHitTargetsInteractive && !entry.surveyMarker.liveOverlay;
+    // #1815: Keep existing 12 pt dot/small markers visible (~14 px on phone,
+    // ~10 px on desktop) at default fit-to-page zoom without altering saved bounds.
+    const compactMarkerViewport = isCoarsePointer
+      || isPhoneLayout()
+      || (typeof window !== 'undefined' && window.innerWidth <= 767);
+    const visibleStrokeWidth = projectedShape?.type === 'stroke'
+      ? effectiveMarkerStrokeWidth(projectedShape, { inverseScale, compact: compactMarkerViewport })
+      : undefined;
+    const visualBox = !projectedShape
+      ? effectiveMarkerBoxRect(bbox, { inverseScale, compact: compactMarkerViewport })
+      : bbox;
     const paint = projectedShape ? (
       <SurveyMarkerShapePaint
         projected={projectedShape}
+        strokeWidth={visibleStrokeWidth}
         needsEntity={Boolean(entry.surveyMarker.needsEntity)}
         color={bbox.fill}
         opacity={bbox.opacity}
@@ -5787,10 +5807,10 @@ const SVGAnnotationLayerBody = memo(({
       />
     ) : (
       <rect
-        x={bbox.left}
-        y={bbox.top}
-        width={bbox.width}
-        height={bbox.height}
+        x={visualBox.left}
+        y={visualBox.top}
+        width={visualBox.width}
+        height={visualBox.height}
         fill={bbox.fill}
         stroke={bbox.stroke}
         strokeWidth={bbox.strokeWidth}
@@ -5820,14 +5840,18 @@ const SVGAnnotationLayerBody = memo(({
         ) : null}
         {paint}
         {isHoveredSurveyMarker && !isSelectedSurveyMarker && projectedShape && (
-          <SurveyMarkerShapeGlow projected={projectedShape} transform={rotationTransform} />
+          <SurveyMarkerShapeGlow
+            projected={projectedShape}
+            strokeWidth={visibleStrokeWidth}
+            transform={rotationTransform}
+          />
         )}
         {isHoveredSurveyMarker && !isSelectedSurveyMarker && !projectedShape && (
           <rect
-            x={bbox.left}
-            y={bbox.top}
-            width={bbox.width}
-            height={bbox.height}
+            x={visualBox.left}
+            y={visualBox.top}
+            width={visualBox.width}
+            height={visualBox.height}
             fill="none"
             stroke="#4a90e2"
             strokeOpacity={0.4}
@@ -5845,7 +5869,8 @@ const SVGAnnotationLayerBody = memo(({
             data-survey-marker-hit-target="true"
             {...surveyMarkerShapeHitProps(projectedShape, {
               interactive: hitInteractive,
-              hitBand: markHitBand(projectedShape.type === 'stroke' ? projectedShape.width : 1),
+              strokeWidth: visibleStrokeWidth,
+              hitBand: markHitBand(projectedShape.type === 'stroke' ? (visibleStrokeWidth ?? projectedShape.width) : 1),
             })}
             transform={rotationTransform}
             style={{ cursor: isSelectTool ? 'move' : undefined }}
@@ -5857,10 +5882,10 @@ const SVGAnnotationLayerBody = memo(({
         ) : (
         <rect
           data-survey-marker-hit-target="true"
-          x={bbox.left}
-          y={bbox.top}
-          width={Math.max(bbox.width, 10)}
-          height={Math.max(bbox.height, 10)}
+          x={visualBox.left}
+          y={visualBox.top}
+          width={Math.max(visualBox.width, 10)}
+          height={Math.max(visualBox.height, 10)}
           fill="rgba(0,0,0,0.001)"
           stroke="none"
           transform={rotationTransform}
