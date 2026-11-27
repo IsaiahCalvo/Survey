@@ -42849,7 +42849,7 @@ ${pageBlocks}
                   { id: 'text', label: 'Text', iconName: 'textBox' },
                   { id: 'callout', label: 'Callout', iconName: 'callout' },
                   // Nightly 'stamp-tool': opens Drawboard's Stamp card.
-                  ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
+                  ...(stampToolEnabled ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
                   // Nightly 'insert-image': picks a picture and drops it on the page.
                   ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
                   // Nightly 'image-camera': take a photo and drop it on the page.
@@ -42972,6 +42972,7 @@ ${pageBlocks}
                   const button = (
                     <button
                       key={t.id}
+                      type="button"
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
                       data-morph-icon={t.iconName}
