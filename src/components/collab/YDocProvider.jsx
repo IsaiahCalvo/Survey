@@ -241,6 +241,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   const providerRef = useRef(null);
   const bridgeRef = useRef(null);
   const retryDualWriteQueueRef = useRef(null);
+  const isActiveRef = useRef(isActive !== false);
+  isActiveRef.current = isActive !== false;
+  const refreshSharedStateRef = useRef(null);
   const [storageState, setStorageState] = useState(null);
   const [role, setRole] = useState('unknown');
   const [isHydrating, setIsHydrating] = useState(true);
@@ -1516,15 +1519,19 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     if (!supabase) { setIsDocShared(false); return undefined; }
     let cancelled = false;
     let inFlight = false;
+    let cachedRole = undefined;
+    let lastCollaboratorsKey = null;
     const sharedBackoff = createBackoffState({ baseMs: 30_000, maxMs: 300_000 });
     const refreshSharedState = async (options) => {
       // w34 (2026-09-25): the 30 s fallback poll (called with no options)
-      // skips while the tab is hidden (background tab, minimised window): it
-      // costs two reads (document_collaborators + my role), ~240 requests an
-      // hour per open document, and a hidden tab shows no sync banner. The
-      // first check, realtime collaborator changes and becoming visible again
-      // always run ({ force: true }), so nothing a change sends is dropped.
-      if (!options?.force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      // skips while the tab is hidden (background tab, minimised window) or
+      // inactive in the multi-tab strip: it costs up to two reads
+      // (document_collaborators + my role), ~240 requests an hour per open
+      // document, and a hidden/inactive tab shows no sync banner. The first
+      // check, realtime collaborator changes, tab activation and becoming
+      // visible again always run ({ force: true }), so nothing a change sends
+      // is dropped.
+      if (!options?.force && (!isActiveRef.current || (typeof document !== 'undefined' && document.visibilityState === 'hidden'))) return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       if (inFlight) return;
       if (!options?.force && sharedBackoff.isBlocked()) return;
@@ -1559,19 +1566,30 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         const activeCollaboratorUserIds = (data || [])
           .map((row) => row?.user_id)
           .filter(Boolean);
+        const collaboratorsKey = activeCollaboratorUserIds.slice().sort().join(',');
         const hasExplicitRemote = hasRemoteDocumentCollaborator({
           activeCollaboratorUserIds,
           currentUserId: myId,
           currentRole: null,
         });
         if (hasExplicitRemote) {
+          lastCollaboratorsKey = collaboratorsKey;
           if (!cancelled) setIsDocShared(true);
           return;
         }
         // Owners are not guaranteed to have a document_collaborators row. If
         // my row is the only row, an editor/viewer still has the row-less owner
-        // to sync with; an owner with only their own row does not.
-        const currentRole = await fetchMyDocumentRole(supabase, docId);
+        // to sync with; an owner with only their own row does not. Reuse the
+        // resolved role on steady-state 30 s polls when collaborator rows did
+        // not change so solo documents avoid a redundant Postgres RPC every 30 s.
+        const needRoleFetch = options?.force
+          || cachedRole === undefined
+          || collaboratorsKey !== lastCollaboratorsKey;
+        const currentRole = needRoleFetch
+          ? await fetchMyDocumentRole(supabase, docId)
+          : cachedRole;
+        cachedRole = currentRole;
+        lastCollaboratorsKey = collaboratorsKey;
         if (!cancelled) {
           setIsDocShared(hasRemoteDocumentCollaborator({
             activeCollaboratorUserIds,
@@ -1586,6 +1604,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         inFlight = false;
       }
     };
+    refreshSharedStateRef.current = refreshSharedState;
     void refreshSharedState({ force: true });
 
     const gatedCollaboratorSub = createVisibilityGatedSubscription({
@@ -1611,13 +1630,13 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     });
     const refreshTimer = setInterval(refreshSharedState, 30_000);
     const refreshWhenShown = () => {
-      if (document.visibilityState !== 'hidden' && !sharedBackoff.isBlocked()) {
+      if (isActiveRef.current && document.visibilityState !== 'hidden' && !sharedBackoff.isBlocked()) {
         void refreshSharedState({ force: true });
       }
     };
     const refreshWhenOnline = () => {
       sharedBackoff.reset();
-      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+      if (isActiveRef.current && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) {
         void refreshSharedState();
       }
     };
@@ -1626,12 +1645,19 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
 
     return () => {
       cancelled = true;
+      if (refreshSharedStateRef.current === refreshSharedState) refreshSharedStateRef.current = null;
       clearInterval(refreshTimer);
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', refreshWhenShown);
       if (typeof window !== 'undefined') window.removeEventListener('online', refreshWhenOnline);
       gatedCollaboratorSub.dispose();
     };
   }, [docId]);
+
+  useEffect(() => {
+    if (isActive !== false && docId && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) {
+      void refreshSharedStateRef.current?.({ force: true });
+    }
+  }, [docId, isActive]);
 
   // 2026-07-01 — resolve the caller's effective role once per document open.
   // Fail-open: any error → null → the read-write presentation stands (the
