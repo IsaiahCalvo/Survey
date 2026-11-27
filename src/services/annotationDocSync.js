@@ -5298,8 +5298,11 @@ function writeSnapshot(state, options = {}) {
   return state.snapshotChain;
 }
 
+// The snapshot guard raises PT409 (HTTP 409). Older databases raised 40001,
+// which PostgREST 14 retries in a loop, so accept both.
 function isSnapshotConflict(error) {
-  return String(error?.code || '') === '40001'
+  const code = String(error?.code || '');
+  return code === 'PT409' || code === '40001'
     || /stale annotation snapshot/i.test(error?.message || '');
 }
 
