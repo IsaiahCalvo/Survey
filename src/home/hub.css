@@ -127,6 +127,7 @@
 .survey-hub h1.title { font-size: 20px; line-height: 1; letter-spacing: -0.03em; margin: 0; font-weight: 700; }
 .survey-hub .crumb { color: var(--ink-200); font-size: 12px; }
 .survey-hub .crumb b { color: var(--bone-100); font-weight: 600; }
+.survey-hub .hub-title-mobile,
 .survey-hub .projects-mobile-summary,
 .survey-hub .templates-mobile-summary,
 .survey-hub .documents-mobile-search-actions,
@@ -1122,7 +1123,7 @@
   .survey-hub .mobile-rail-nav {
     display: none;
     order: 1;
-    flex: none;
+    flex: 0 1 auto;
     min-width: 0;
     align-self: baseline;
     position: relative;
@@ -1144,6 +1145,8 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    max-width: 100%;
+    min-width: 0;
     margin: 0;
     padding: 0;
     border: 0;
@@ -1154,6 +1157,13 @@
     line-height: inherit;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .survey-hub .hub-title-switch__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   /* 44px tall to the finger whatever the title's painted height. It reaches
@@ -1268,6 +1278,18 @@
     line-height: 1.05;
     /* Spec guard (docs/design/design.md): no negative tracking on mobile. */
     letter-spacing: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .survey-hub .hub-title-desktop {
+    display: none;
+  }
+
+  .survey-hub .hub-title-mobile {
+    display: inline !important;
   }
 
   .survey-hub .crumb {
