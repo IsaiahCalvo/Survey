@@ -49,7 +49,7 @@ test('each is a 120 x 60 pt box, 2 pt #FF4F68 border, 11 pt #FF4F68 words centre
 });
 
 test('a beta flag with its migration; Stamp in the desktop and phone Text group; placed by the library layer', () => {
-  assert.equal(FEATURE_FLAGS['stamp-tool']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['stamp-tool']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110148000_stamp_tool_flag.sql'), /\('stamp-tool', 'off'/);
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /isFeatureOn\('stamp-tool'\) \? \[\{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true \}\]/);

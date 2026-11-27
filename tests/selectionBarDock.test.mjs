@@ -24,7 +24,7 @@ test('the dock choice toggles (storage off is fine)', () => {
 });
 
 test('flag, bar and mark menu are wired, and a migration adds the row', () => {
-  assert.equal(FEATURE_FLAGS['toolbar-settings'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['toolbar-settings'].stage, 'rollout');
   const bar = read('src/components/SelectionQuickBar.jsx');
   assert.match(bar, /isFeatureOn\('toolbar-settings'\)/);
   assert.match(bar, /dock: dockedNow \? dockedBarPosition\(bounds,/);

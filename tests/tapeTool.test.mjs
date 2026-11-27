@@ -39,7 +39,7 @@ test('tape is a Draw tool with its own bar, an ink tool for presses, and a beta 
   assert.equal(markToolForAnnotation({ type: 'path', data: { tape: true } }), 'tape');
   assert.equal(markToolForAnnotation({ type: 'path', data: {} }), 'pen');
   assert.equal(getToolSelectionClass('tape'), 'ink');
-  assert.equal(FEATURE_FLAGS['tape-tool']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['tape-tool']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110142000_tape_tool_flag.sql'), /\('tape-tool', 'off'/);
   assert.match(read('src/hooks/useDatabase.js'), /tape: \{ strokeColor: '#ddc3ff', strokeWidth: 20, strokeOpacity: 100 \}/);
 });

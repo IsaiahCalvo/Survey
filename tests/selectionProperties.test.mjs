@@ -125,7 +125,7 @@ test('a typed W or H scales a box mark and reflows a text box; it stops at 1', (
 });
 
 test('a beta flag with its migration, wired into the quick bar, the app shell and the layer', () => {
-  assert.equal(FEATURE_FLAGS['properties-panel']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['properties-panel']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110145000_properties_panel_flag.sql'), /\('properties-panel', 'off'/);
   assert.match(read('src/components/SelectionQuickBar.jsx'), /data-selection-quick-expand/);
   assert.match(read('src/AppShell.jsx'), /<SelectionPropertiesPanel/);

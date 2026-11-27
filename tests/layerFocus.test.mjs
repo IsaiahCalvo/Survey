@@ -54,7 +54,7 @@ test('the store takes only known levels and starts off at 20%', () => {
 test('marks carry their layer; the flag is beta with a migration', () => {
   const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   assert.match(layer, /data-mark-layer=\{obj\?\.layerId \|\| 'default'\}/);
-  assert.equal(FEATURE_FLAGS['layer-focus'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['layer-focus'].stage, 'rollout');
   const migration = readFileSync(new URL('../supabase/migrations/20261116022000_layer_focus_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'layer-focus', 'off'/);
 });

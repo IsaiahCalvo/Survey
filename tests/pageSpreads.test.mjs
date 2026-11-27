@@ -11,7 +11,7 @@ import { buildVisiblePageStack, pagedRowIndex, pagedRows, pagedRowSpread } from 
 const page = (w = 600, h = 800) => ({ w, h });
 
 test('page-spreads is a Nightly beta flag with an off-by-default row', () => {
-  assert.equal(FEATURE_FLAGS['page-spreads']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['page-spreads']?.stage, 'rollout');
   const mig = readFileSync(new URL('../supabase/migrations/20261113003000_page_spreads_flag.sql', import.meta.url), 'utf8');
   assert.match(mig, /'page-spreads', 'off'/);
 });

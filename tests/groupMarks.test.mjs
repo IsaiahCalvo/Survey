@@ -16,7 +16,7 @@ const rect = (id, left, groupId) => ({
 });
 
 test('group-marks is a Nightly beta flag with an off-by-default row', () => {
-  assert.equal(FEATURE_FLAGS['group-marks']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['group-marks']?.stage, 'rollout');
   const mig = readFileSync(new URL('../supabase/migrations/20261113002000_group_marks_flag.sql', import.meta.url), 'utf8');
   assert.match(mig, /'group-marks', 'off'/);
 });

@@ -48,7 +48,7 @@ test('a JPEG data URL gives its bytes back for the PDF writer', () => {
 });
 
 test('wired: flag, migration, Image buttons, paste host, unlocked selection, JPEG export', () => {
-  assert.equal(FEATURE_FLAGS['insert-image']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['insert-image']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110153000_insert_image_flag.sql'), /'insert-image', 'off'/);
   assert.match(read('src/PDFViewer.jsx'), /isFeatureOn\('insert-image'\) \? \[\{ id: 'image', label: 'Image', iconName: 'image', action: true \}\]/);
   assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /\{ id: 'image', label: 'Image', icon: 'image', flag: 'insert-image', action: true \}/);

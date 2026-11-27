@@ -77,7 +77,7 @@ test('the PDF: basic papers unchanged, templates drawn once and shared by every 
 });
 
 test('flag is a Nightly beta with an off row', () => {
-  assert.equal(FEATURE_FLAGS['home-templates']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['home-templates']?.stage, 'rollout');
   const sql = readFileSync(new URL('../supabase/migrations/20261110174000_home_templates.sql', import.meta.url), 'utf8');
   assert.match(sql, /\('home-templates', 'off'/);
 });
