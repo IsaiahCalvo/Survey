@@ -310,13 +310,15 @@ export function historyShortVerb(kind) {
   return SHORT_VERBS[kind] || 'Edited it';
 }
 
-const ACTOR_VERB_RE = /^(.*?)\s+(created|drew|deleted|moved|resized|rotated|edited|locked|unlocked|restored|undid|redid|made|synced|changed|erased|added|brought)\b/;
+const ACTOR_VERB_RE = /^(.*?)\s+(created|drew|deleted|moved|resized|rotated|edited|locked|unlocked|restored|undid|redid|made|synced|changed|erased|added|brought|set|updated|cleared|assigned|unassigned|renamed|removed|resolved|reopened|marked|linked|unlinked)\b/;
 
 /** The person's name as written into the row (null when it can't be read). */
 export function historyActorName(row) {
+  const structured = String(row?.payload?.actorName || row?.actor_name || '').trim();
+  if (structured && structured !== 'Someone') return structured;
   const match = ACTOR_VERB_RE.exec(String(row?.summary || ''));
   const name = match ? match[1].trim() : '';
-  return name || null;
+  return name || structured || null;
 }
 
 /**
