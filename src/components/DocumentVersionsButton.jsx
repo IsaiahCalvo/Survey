@@ -11,6 +11,7 @@ import {
   DOCUMENT_VERSIONS_CHANGED_EVENT, listDocumentVersions, removeDocumentVersion, restoreDocumentVersion, versionDeletedText,
 } from '../services/documentVersionService.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { createBackoffState } from '../utils/pollingBackoff.js';
 import { showToast } from '../utils/toast';
 import BodyPortal from './BodyPortal';
 
@@ -18,6 +19,9 @@ const DocumentVersionsDialog = lazy(() => import('./DocumentVersionsDialog.jsx')
 const VersionCompareDialog = lazy(() => import('./VersionCompareDialog.jsx'));
 
 const VERSION_RECHECK_MS = 20_000;
+const VERSION_FOCUS_COOLDOWN_MS = 10_000;
+const VERSION_ERROR_BACKOFF_BASE_MS = 30_000;
+const VERSION_ERROR_BACKOFF_MAX_MS = 300_000;
 
 function sameVersions(a, b) {
   return a.length === b.length && a.every((v, i) => v.id === b[i].id && v.isCurrent === b[i].isCurrent && v.versionNumber === b[i].versionNumber && v.name === b[i].name);
@@ -55,13 +59,61 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     let ask = 0;
     // A delete or Undo made on this device needs no "newer version" notice.
     let quietNext = false;
-    const load = () => {
+    let inFlight = false;
+    let queuedForce = false;
+    let lastAttemptAt = 0;
+    let timer = null;
+    const backoff = createBackoffState({
+      baseMs: VERSION_ERROR_BACKOFF_BASE_MS,
+      maxMs: VERSION_ERROR_BACKOFF_MAX_MS,
+    });
+
+    const isVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
+    const isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+
+    const clearTimer = () => {
+      if (timer != null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const scheduleNext = (delayMs) => {
+      clearTimer();
+      if (cancelled || !isVisible() || !isOnline()) return;
+      timer = window.setTimeout(() => {
+        timer = null;
+        if (cancelled || !isVisible() || !isOnline()) return;
+        load({ force: false });
+      }, Math.max(0, delayMs));
+    };
+
+    const load = ({ force = true } = {}) => {
+      if (cancelled) return undefined;
+      if (!force) {
+        if (!isVisible() || !isOnline()) return undefined;
+        if (inFlight) return undefined;
+        if (backoff.isBlocked()) {
+          scheduleNext(backoff.remainingMs());
+          return undefined;
+        }
+      } else {
+        backoff.reset();
+        if (inFlight) {
+          queuedForce = true;
+          return undefined;
+        }
+      }
+      clearTimer();
+      inFlight = true;
+      lastAttemptAt = Date.now();
       ask += 1;
       const mine = ask;
       const quiet = quietNext;
       quietNext = false;
       return listDocumentVersions(supabase, documentId)
         .then((list) => {
+          backoff.recordSuccess();
           if (cancelled || mine !== ask) return;
           // Someone else uploaded a new version while this copy was open: say
           // so once; the older-version bar and read-only mode follow from it.
@@ -82,31 +134,61 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
           // uploading) is left alone.
           if (!cancelled && mine === ask && wasCurrent != null && err?.code === '42501') onSupersededRef.current?.(documentId, true);
           else console.warn('[versions] could not list versions', err);
+          backoff.recordFailure();
+        })
+        .finally(() => {
+          inFlight = false;
+          if (cancelled) return;
+          if (queuedForce) {
+            queuedForce = false;
+            load({ force: true });
+            return;
+          }
+          scheduleNext(backoff.failures > 0 ? backoff.remainingMs() : VERSION_RECHECK_MS);
         });
     };
     loadRef.current = load;
-    load();
+    load({ force: true });
     // Nothing pushes a supersede to other people's open copies, so look again
-    // on return to the tab and every 20 s while it is in view.
-    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
-    const timer = window.setInterval(onVisible, VERSION_RECHECK_MS);
+    // on return to the tab (with a short cooldown + outage backoff) and on the
+    // scheduled recheck while visible.
+    const onVisible = () => {
+      if (cancelled || !isVisible() || !isOnline() || inFlight) return;
+      if (backoff.isBlocked()) {
+        if (timer == null) scheduleNext(backoff.remainingMs());
+        return;
+      }
+      const sinceLast = Date.now() - lastAttemptAt;
+      if (sinceLast < VERSION_FOCUS_COOLDOWN_MS) {
+        if (timer == null) scheduleNext(VERSION_RECHECK_MS - sinceLast);
+        return;
+      }
+      load({ force: false });
+    };
+    const onOnline = () => {
+      if (cancelled) return;
+      backoff.reset();
+      if (isVisible() && !inFlight) load({ force: false });
+    };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
+    window.addEventListener('online', onOnline);
     // The upload that made this copy a new version can finish after it opened.
     const onChanged = (e) => {
       const { oldDocumentId, newDocumentId, removed, restored } = e?.detail || {};
       if (documentId === oldDocumentId || documentId === newDocumentId) {
         quietNext = Boolean(removed || restored);
-        load();
+        load({ force: true });
       }
     };
     window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     return () => {
       cancelled = true;
       if (loadRef.current === load) loadRef.current = null;
-      window.clearInterval(timer);
+      clearTimer();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
+      window.removeEventListener('online', onOnline);
       window.removeEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     };
   }, [documentId]);
