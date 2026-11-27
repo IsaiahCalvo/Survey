@@ -21,6 +21,7 @@ import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize, isStorageRefusal } from '../services/pdfByteCache.js';
+import { signedUrlCache, bindSignedUrlCacheToAuth } from '../services/signedUrlCache.js';
 import { offlineDocuments, readPdfWithOfflineCopy, bindOfflineDocumentsToAuth, OFFLINE_COPY_OPENED_EVENT, CURRENT_SHA_TIMEOUT } from '../services/offlineDocuments.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { STREAM_SIGNED_URL_SECONDS, chooseCloudPdfOpenPath } from '../services/cloudPdfStream.js';
@@ -40,16 +41,34 @@ import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './library
 if (supabase) bindPdfCacheToAuth(supabase, pdfByteCache());
 // Same rule for page previews kept on the device (pageThumbStore.js).
 if (supabase) bindPdfCacheToAuth(supabase, pageThumbStore());
+// Same rule for in-memory Storage / R2 signed URLs.
+if (supabase) bindSignedUrlCacheToAuth(supabase, signedUrlCache());
 // Nightly offline-docs: kept documents follow the same sign-out rule.
 if (supabase) bindOfflineDocumentsToAuth(supabase, offlineDocuments());
 // Same rule for the home lists' device copy (libraryListCache.js).
 if (supabase) bindLibraryListCacheToAuth(supabase);
 
+const DOCUMENTS_BUCKET = 'documents';
+const PDF_SIGNED_URL_MARGIN_SECONDS = 60;
+const VERIFIED_STAMP_WINDOW_MS = 15_000;
+const verifiedPdfStamps = new Map(); // filePath -> { stamp, at }
+if (supabase?.auth?.onAuthStateChange) {
+  let verifiedActor;
+  supabase.auth.onAuthStateChange((event, session) => {
+    const nextActor = session?.user?.id ?? null;
+    const initial = event === 'INITIAL_SESSION' && verifiedActor === undefined;
+    if (event === 'SIGNED_OUT' || (!initial && (event !== 'TOKEN_REFRESHED' || verifiedActor !== nextActor))) {
+      verifiedPdfStamps.clear();
+    }
+    verifiedActor = nextActor;
+  });
+}
+
 // Storage's metadata for one stored PDF, always from the server: the browser's
 // HTTP cache must never answer the per-open access check (uploads are stored
 // with max-age=3600, and the metadata answer can carry it). Same route and
 // auth as storage-js's info() (the client's fetch adds the session token).
-function fetchStoredPdfInfo(filePath) {
+export function fetchStoredPdfInfo(filePath) {
   return retryStorageRead(() => fetchStoredPdfInfoOnce(filePath));
 }
 async function fetchStoredPdfInfoOnce(filePath) {
@@ -64,17 +83,66 @@ async function fetchStoredPdfInfoOnce(filePath) {
     if (!response.ok) {
       let message = `HTTP ${response.status}`;
       try { message = (await response.json())?.message || message; } catch { /* no body */ }
+      if (isStorageRefusal({ status: response.status, message })) {
+        verifiedPdfStamps.delete(filePath);
+        signedUrlCache().invalidate(DOCUMENTS_BUCKET, filePath);
+      }
       return { data: null, error: { status: response.status, message } };
     }
-    return { data: await response.json(), error: null };
+    const data = await response.json();
+    const stamp = pdfCacheStamp(data);
+    if (stamp) verifiedPdfStamps.set(filePath, { stamp, at: Date.now() });
+    return { data, error: null };
   } catch (error) {
     return { data: null, error };
   }
 }
+
+// Download a cloud PDF through the access-checked device byte cache and R2
+// mirror (used by secondary readers like survey reports and version compare so
+// they never bypass pdfByteCache / R2 and burn Storage egress).
+export async function downloadCachedCloudPdf(filePath, { actorId = undefined } = {}) {
+  if (!filePath || !isSupabaseAvailable()) return null;
+  await waitForPdfUpload(filePath);
+  let resolvedActor = actorId;
+  if (resolvedActor === undefined) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      resolvedActor = data?.session?.user?.id ?? null;
+    } catch {
+      resolvedActor = null;
+    }
+  }
+  return storageDownloads(supabase).read(resolvedActor, filePath, () => readPdfThroughCache({
+    cache: pdfByteCache(),
+    actorId: resolvedActor,
+    path: filePath,
+    fetchInfo: () => fetchStoredPdfInfo(filePath),
+    download: async () => {
+      const fromR2 = await downloadPdfFromR2(supabase, filePath);
+      if (fromR2) return fromR2;
+      const { data, error } = await retryStorageRead(() => supabase.storage
+        .from('documents')
+        .download(filePath, {}, { cache: 'no-store' }));
+      if (error) throw error;
+      return data;
+    },
+  }));
+}
+
 // The short-lived signed URL a cloud PDF is streamed from (cloudPdfStream.js):
 // its Cloudflare R2 copy when the 'pdf-r2' flag is on and the copy is ready
-// (services/pdfR2Source.js), else Supabase Storage.
-const signOpenSource = async (filePath) => {
+// (services/pdfR2Source.js), else Supabase Storage. When a caller already ran
+// the per-open access check (`stamp` or a fresh fetchStoredPdfInfo answer),
+// reuse a still-valid cached link for that exact object version instead of
+// re-querying storage.objects / pdf-file-url.
+const signOpenSource = async (filePath, { stamp = null } = {}) => {
+  const recent = verifiedPdfStamps.get(filePath);
+  const verifiedStamp = stamp || (recent && Date.now() - recent.at <= VERIFIED_STAMP_WINDOW_MS ? recent.stamp : null);
+  if (verifiedStamp) {
+    const cachedUrl = signedUrlCache().get(DOCUMENTS_BUCKET, filePath, { stamp: verifiedStamp });
+    if (cachedUrl) return { data: { signedUrl: cachedUrl }, error: null };
+  }
   const r2Url = await requestR2PdfLink(supabase, filePath);
   if (r2Url) return { data: { signedUrl: r2Url }, error: null };
   return retryStorageRead(() => supabase.storage
@@ -945,6 +1013,8 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    verifiedPdfStamps.delete(filePath);
+    signedUrlCache().invalidate(DOCUMENTS_BUCKET, filePath);
     // w36: the path names these bytes (content hash, or a fresh unique path),
     // so this device keeps them: its first reopen downloads nothing. Awaited
     // (one small metadata read + a local write; uploads already run in the
@@ -980,6 +1050,12 @@ export const useStorage = () => {
       onProgress,
     });
     storageDownloads(supabase).invalidate(saved.filePath);
+    verifiedPdfStamps.delete(saved.filePath);
+    signedUrlCache().invalidate(DOCUMENTS_BUCKET, saved.filePath);
+    if (filePath && filePath !== saved.filePath) {
+      verifiedPdfStamps.delete(filePath);
+      signedUrlCache().invalidate(DOCUMENTS_BUCKET, filePath);
+    }
     void pdfByteCache().removePath(saved.filePath);
     return saved;
   }, [user]);
@@ -1062,6 +1138,10 @@ export const useStorage = () => {
     // Open speed: read this device's copy while the access check is out, not
     // after it. Its bytes are served only if the check names their version.
     const copy = early?.cached ?? ((key && cache && !cache.isDisabled) ? cache.peek(key) : null);
+    const deferSign = Boolean(
+      (key && cache && !cache.isDisabled && cache.hasKnownKey?.(key))
+      || signedUrlCache().hasFresh(DOCUMENTS_BUCKET, filePath),
+    );
     const source = await resolveOpenDocumentSource({
       fetchInfo: () => early?.info ?? fetchStoredPdfInfo(filePath),
       readCached: async (data) => {
@@ -1073,12 +1153,20 @@ export const useStorage = () => {
         return held.bytes;
       },
       sign: () => early?.signing ?? signOpenSource(filePath),
+      deferSign,
     });
     if (!source) return null;
     const info = { data: source.info };
     const stamp = pdfCacheStamp(info.data);
     if (source.cached) return { blob: new Blob([source.cached], { type: 'application/pdf' }) };
     const signed = { signedUrl: source.signedUrl };
+    if (stamp && signed.signedUrl) {
+      signedUrlCache().set(DOCUMENTS_BUCKET, filePath, signed.signedUrl, {
+        ttlSeconds: STREAM_SIGNED_URL_SECONDS,
+        marginSeconds: PDF_SIGNED_URL_MARGIN_SECONDS,
+        stamp,
+      });
+    }
     return {
       url: signed.signedUrl,
       size: pdfCacheInfoSize(info.data),
@@ -1103,11 +1191,16 @@ export const useStorage = () => {
     if (chooseCloudPdfOpenPath({ pdfFile: { filePath } }).path !== 'stream') return false;
     const cache = pdfByteCache();
     const key = pdfCacheKey(user?.id ?? null, filePath);
+    const deferSign = Boolean(
+      (key && cache && !cache.isDisabled && cache.hasKnownKey?.(key))
+      || signedUrlCache().hasFresh(DOCUMENTS_BUCKET, filePath),
+    );
     return openSourceHeadStarts().start(key, {
       stamp: openSourceCacheStamp(cache, filePath),
       fetchInfo: () => fetchStoredPdfInfo(filePath),
       sign: () => signOpenSource(filePath),
       readCached: (key && cache && !cache.isDisabled) ? () => cache.peek(key) : null,
+      deferSign,
     });
   }, [user?.id]);
 
@@ -1122,6 +1215,8 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    verifiedPdfStamps.delete(filePath);
+    signedUrlCache().invalidate(DOCUMENTS_BUCKET, filePath);
     void pdfByteCache().removePath(filePath);
   }, []);
 

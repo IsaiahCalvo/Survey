@@ -30,6 +30,9 @@ import { isUserBusy } from '../services/userActivity';
 const loadThumbnailRender = () => import('../services/thumbnailRender');
 import { registerThumbnailBackfill } from '../home/thumbnailRequestPolicy';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
+import { pdfByteCache, pdfCacheKey, pdfCacheStamp } from '../services/pdfByteCache.js';
+import { requestR2PdfLink } from '../services/pdfR2Source.js';
+import { fetchStoredPdfInfo } from './useDatabase.js';
 
 export const FULL_DOWNLOAD_MAX_BYTES = 1.5 * 1024 * 1024;
 export const RANGED_PAGE_BUDGET_BYTES = 8 * 1024 * 1024;
@@ -44,6 +47,28 @@ function skipError(reason) {
   error.code = 'THUMB_SKIP';
   error.reason = reason;
   return error;
+}
+
+async function readVerifiedCachedPdfBytes(filePath) {
+  const cache = pdfByteCache();
+  if (!cache || cache.isDisabled) return null;
+  let actorId = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    actorId = data?.session?.user?.id ?? null;
+  } catch {
+    actorId = null;
+  }
+  const key = pdfCacheKey(actorId, filePath);
+  if (!key) return null;
+  const held = await cache.peek(key);
+  if (!held) return null;
+  const info = await fetchStoredPdfInfo(filePath);
+  if (info?.error || !info?.data) return null;
+  const stamp = pdfCacheStamp(info.data);
+  if (!stamp || held.stamp !== stamp) return null;
+  cache.use(key);
+  return held.bytes;
 }
 
 async function openSource(doc, { pdfjsLib, downloadDocument, openRangedPdf }) {
@@ -63,6 +88,20 @@ async function openSource(doc, { pdfjsLib, downloadDocument, openRangedPdf }) {
     };
   }
   if (!isSupabaseAvailable()) throw skipError('offline');
+  // Reuse already-cached local bytes (after per-open server access check) to
+  // avoid up to 8 MB of Storage egress when the user already opened this file.
+  const cachedBytes = await readVerifiedCachedPdfBytes(filePath);
+  if (cachedBytes) {
+    return {
+      loadingTask: pdfjsLib.getDocument({ data: cachedBytes, isEvalSupported: false, verbosity: pdfjsLib.VerbosityLevel.ERRORS, ...pdfjsAssetOptions(pdfjsLib) }),
+      stats: { bytes: 0, requests: 0 },
+    };
+  }
+  // Prefer zero-egress Cloudflare R2 copy when 'pdf-r2' is enabled and ready.
+  const r2Url = await requestR2PdfLink(supabase, filePath);
+  if (r2Url) {
+    return openRangedPdf({ pdfjsLib, url: r2Url, maxBytes: RANGED_PAGE_BUDGET_BYTES });
+  }
   const { data: signed, error } = await supabase.storage.from('documents').createSignedUrl(filePath, 120);
   if (error || !signed?.signedUrl) throw error || new Error('could not sign thumbnail source');
   return openRangedPdf({ pdfjsLib, url: signed.signedUrl, maxBytes: RANGED_PAGE_BUDGET_BYTES });

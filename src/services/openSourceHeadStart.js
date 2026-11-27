@@ -29,11 +29,19 @@ export function createOpenSourceHeadStarts({ now = () => Date.now(), maxAgeMs = 
      * Ask now. `stamp` names the byte cache state the answers belong to.
      * `readCached` (optional) reads this device's copy alongside: unverified
      * until the access check names its version (the viewer checks).
+     * `deferSign` (optional) skips the speculative signing call when this
+     * device is known to hold a cached copy; on a miss the viewer still signs.
      */
-    start(key, { fetchInfo, sign, stamp, readCached }) {
-      if (!key || typeof fetchInfo !== 'function' || typeof sign !== 'function') return false;
+    start(key, { fetchInfo, sign, stamp, readCached, deferSign = false }) {
+      if (!key || typeof fetchInfo !== 'function' || (!deferSign && typeof sign !== 'function')) return false;
       prune();
-      const entry = { at: now(), stamp, info: settle(fetchInfo), signing: settle(sign), cached: null };
+      const entry = {
+        at: now(),
+        stamp,
+        info: settle(fetchInfo),
+        signing: deferSign ? null : settle(sign),
+        cached: null,
+      };
       if (typeof readCached === 'function') {
         entry.cached = Promise.resolve().then(readCached).catch(() => null);
         // An open that never comes does not keep the file's bytes in memory.
