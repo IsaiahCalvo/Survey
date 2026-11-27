@@ -41,6 +41,7 @@ import { isFeatureOn } from '../../featureFlags.js';
 import StorageFailureBanner from './StorageFailureBanner.jsx';
 import ReSignInModal from './ReSignInModal.jsx';
 import ReadOnlyGate from './ReadOnlyGate.jsx';
+import { createVisibilityGatedSubscription } from '../../utils/realtimePolicy.js';
 
 const ydocProviderDebug = (...args) => {
   if (typeof window === 'undefined' || window.__CRDT_BACKFILL_DEBUG !== true) return;
@@ -1587,20 +1588,27 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     };
     void refreshSharedState({ force: true });
 
-    const channelSuffix = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const collaboratorChannel = supabase
-      .channel(`ydoc-shared-state:${docId}:${channelSuffix}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'document_collaborators',
-        filter: `document_id=eq.${docId}`,
-      }, () => {
-        void refreshSharedState({ force: true });
-      })
-      .subscribe();
+    const gatedCollaboratorSub = createVisibilityGatedSubscription({
+      subscribe: () => {
+        const channelSuffix = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const collaboratorChannel = supabase
+          .channel(`ydoc-shared-state:${docId}:${channelSuffix}`)
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'document_collaborators',
+            filter: `document_id=eq.${docId}`,
+          }, () => {
+            void refreshSharedState({ force: true });
+          })
+          .subscribe();
+        return () => {
+          try { supabase.removeChannel(collaboratorChannel); } catch { /* best effort */ }
+        };
+      },
+    });
     const refreshTimer = setInterval(refreshSharedState, 30_000);
     const refreshWhenShown = () => {
       if (document.visibilityState !== 'hidden' && !sharedBackoff.isBlocked()) {
@@ -1621,7 +1629,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       clearInterval(refreshTimer);
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', refreshWhenShown);
       if (typeof window !== 'undefined') window.removeEventListener('online', refreshWhenOnline);
-      try { supabase.removeChannel(collaboratorChannel); } catch { /* best effort */ }
+      gatedCollaboratorSub.dispose();
     };
   }, [docId]);
 

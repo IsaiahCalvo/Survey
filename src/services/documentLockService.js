@@ -14,6 +14,7 @@
 
 import { supabase } from '../supabaseClient.js';
 import { isDeviceDocumentId } from './deviceFiles.js';
+import { createVisibilityGatedSubscription } from '../utils/realtimePolicy.js';
 
 export function createDocumentLockStateSequence(onChange) {
   let realtimeGeneration = 0;
@@ -78,30 +79,58 @@ export function subscribeDocumentLockState(documentId, onChange, client = supaba
   if (!documentId || typeof onChange !== 'function' || typeof client?.channel !== 'function') {
     return () => {};
   }
-  const channel = client
-    .channel(`document-lock:${documentId}:${Math.random().toString(36).slice(2)}`)
-    .on('postgres_changes', {
-      event: 'UPDATE',
-      schema: 'public',
-      table: 'documents',
-      filter: `id=eq.${documentId}`,
-    }, (payload) => {
-      const row = payload?.new;
-      if (!row || row.id !== documentId) return;
-      onChange({
-        lockedAt: row.locked_at ?? null,
-        lockedBy: row.locked_by ?? null,
-        lockedLabel: row.locked_label ?? null,
-        // Only the owner still receives a row once it is archived (RLS), so
-        // this reaches the owner's other windows (the viewer's live Archive
-        // note); everyone else learns at their next refused edit.
-        archivedAt: row.user_archived_at ?? null,
-      });
-    })
-    .subscribe();
+  let cancelled = false;
+  const gatedSub = createVisibilityGatedSubscription({
+    subscribe: () => {
+      const channel = client
+        .channel(`document-lock:${documentId}:${Math.random().toString(36).slice(2)}`)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'documents',
+          filter: `id=eq.${documentId}`,
+        }, (payload) => {
+          const row = payload?.new;
+          if (!row || row.id !== documentId) return;
+          onChange({
+            lockedAt: row.locked_at ?? null,
+            lockedBy: row.locked_by ?? null,
+            lockedLabel: row.locked_label ?? null,
+            // Only the owner still receives a row once it is archived (RLS), so
+            // this reaches the owner's other windows (the viewer's live Archive
+            // note); everyone else learns at their next refused edit.
+            archivedAt: row.user_archived_at ?? null,
+          });
+        })
+        .subscribe();
+
+      return () => {
+        try { client.removeChannel?.(channel); } catch { /* best-effort teardown */ }
+      };
+    },
+    onResume: () => {
+      if (cancelled || typeof client?.from !== 'function') return;
+      Promise.resolve(
+        client
+          .from('documents')
+          .select('locked_at, locked_by, locked_label, user_archived_at')
+          .eq('id', documentId)
+          .maybeSingle(),
+      ).then(({ data, error } = {}) => {
+        if (cancelled || error || !data) return;
+        onChange({
+          lockedAt: data.locked_at ?? null,
+          lockedBy: data.locked_by ?? null,
+          lockedLabel: data.locked_label ?? null,
+          archivedAt: data.user_archived_at ?? null,
+        });
+      }).catch(() => {});
+    },
+  });
 
   return () => {
-    try { client.removeChannel?.(channel); } catch { /* best-effort teardown */ }
+    cancelled = true;
+    gatedSub.dispose();
   };
 }
 

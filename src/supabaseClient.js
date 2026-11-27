@@ -13,6 +13,7 @@ import {
   checkpointBodyFetch,
   enableCheckpointBodySubstitution,
 } from './services/checkpointBodyFetch.js';
+import { computeRealtimeReconnectDelayMs } from './utils/realtimePolicy.js';
 
 const env = import.meta.env || {};
 
@@ -55,6 +56,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // annotation checkpoint's request body is assembled from bytes the checkpoint
 // worker prepared instead of from one huge string on the main thread (same
 // bytes on the wire; see services/checkpointBodyFetch.js).
+// 2026-11-27: `realtime.reconnectAfterMs` uses jittered exponential backoff so
+// an outage or DB restart does not trigger lockstep 10s reconnect storms across
+// every open browser tab.
 export const supabase = supabaseUrl && supabaseAnonKey
   ? enableCheckpointBodySubstitution(createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -63,6 +67,9 @@ export const supabase = supabaseUrl && supabaseAnonKey
         detectSessionInUrl: true,
         lock: clampedAuthLock,
         ...(SUPABASE_AUTH_STORAGE_KEY ? { storageKey: SUPABASE_AUTH_STORAGE_KEY } : {}),
+      },
+      realtime: {
+        reconnectAfterMs: (tries) => computeRealtimeReconnectDelayMs(tries),
       },
       global: { fetch: checkpointBodyFetch },
     }))

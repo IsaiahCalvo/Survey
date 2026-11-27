@@ -25,6 +25,7 @@ import {
   LIBRARY_PAYLOAD_MAX_BYTES,
   summarizeLibraryKinds,
 } from './markLibraryModel.js';
+import { createVisibilityGatedSubscription } from '../utils/realtimePolicy.js';
 
 const LOCAL_KEY = 'survey:mark-library.v1';
 const RECENTS_KEY = 'survey:mark-library-recents.v1';
@@ -73,7 +74,7 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
     view: { library: 'personal', layout: 'large', sort: 'recent', groupByTag: false, ...readJson(VIEW_KEY, {}) },
   };
   const listeners = new Set();
-  let channel = null;
+  let gatedSub = null;
   let loadToken = 0;
 
   const emit = () => { for (const fn of listeners) fn(); };
@@ -104,16 +105,17 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
   };
 
   function unsubscribe() {
-    if (channel && supabase) {
-      try { supabase.removeChannel(channel); } catch { /* already gone */ }
+    if (gatedSub) {
+      gatedSub.dispose();
+      gatedSub = null;
     }
-    channel = null;
   }
 
   function subscribe() {
     unsubscribe();
     if (!online() || typeof supabase.channel !== 'function') return;
     const { userId, projectId } = state;
+    const canReadProject = Boolean(projectId && state.access.canRead);
     const onChange = (payload) => {
       if (payload.eventType === 'DELETE') {
         if (payload.old?.id) dropIds([payload.old.id]);
@@ -122,18 +124,28 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
       const item = libraryItemFromRow(payload.new);
       if (item) putItem(item);
     };
-    const table = { schema: 'public', table: 'mark_library_items' };
-    let ch = supabase.channel(`mark-library:${userId}:${projectId || 'none'}:${newId().slice(0, 8)}`);
-    const filters = [`created_by=eq.${userId}`];
-    if (projectId && state.access.canRead) filters.push(`project_id=eq.${projectId}`);
-    for (const filter of filters) {
-      ch = ch
-        .on('postgres_changes', { event: 'INSERT', ...table, filter }, onChange)
-        .on('postgres_changes', { event: 'UPDATE', ...table, filter }, onChange);
-    }
-    // Realtime can't filter deletes (the old row is only its id), so take
-    // them all; dropIds ignores ids this person doesn't hold.
-    channel = ch.on('postgres_changes', { event: 'DELETE', ...table }, onChange).subscribe();
+    gatedSub = createVisibilityGatedSubscription({
+      subscribe: () => {
+        const table = { schema: 'public', table: 'mark_library_items' };
+        let ch = supabase.channel(`mark-library:${userId}:${projectId || 'none'}:${newId().slice(0, 8)}`);
+        const filters = [`created_by=eq.${userId}`];
+        if (canReadProject) filters.push(`project_id=eq.${projectId}`);
+        for (const filter of filters) {
+          ch = ch
+            .on('postgres_changes', { event: 'INSERT', ...table, filter }, onChange)
+            .on('postgres_changes', { event: 'UPDATE', ...table, filter }, onChange);
+        }
+        // Realtime can't filter deletes (the old row is only its id), so take
+        // them all; dropIds ignores ids this person doesn't hold.
+        const activeChannel = ch.on('postgres_changes', { event: 'DELETE', ...table }, onChange).subscribe();
+        return () => {
+          try { supabase.removeChannel(activeChannel); } catch { /* already gone */ }
+        };
+      },
+      onResume: () => {
+        if (online()) void load();
+      },
+    });
   }
 
   // The API hands back at most PAGE_ROWS rows a request (max_rows), and a

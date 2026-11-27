@@ -22667,8 +22667,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [archivedLive, setArchivedLive] = useState(false);
   useEffect(() => {
     setArchivedLive(false);
+  }, [pdfFile?.id]);
+  useEffect(() => {
     const documentId = pdfFile?.id;
-    if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
+    if (!isActive || !documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
     // Unlocked or restored from Archive after a refused edit: the row reads
     // free again, so the tools come back (a refusal that still stands blocks
     // again on the next edit).
@@ -22676,7 +22678,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       setArchivedLive(Boolean(state?.archivedAt));
       if (!state?.archivedAt && !state?.lockedAt) clearAnnotationEditBlocked?.();
     });
-  }, [pdfFile?.id, cloudSyncEnabled, clearAnnotationEditBlocked]);
+  }, [isActive, pdfFile?.id, cloudSyncEnabled, clearAnnotationEditBlocked]);
   const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
   useEffect(() => {
     if (!editBlockedReason || !isActive) return undefined;
@@ -23369,7 +23371,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // renders so the user knows the surface is alive.
   const documentPresenceList = useDocumentPresenceList({
     documentId: pdfFile?.id || null,
-    enabled: cloudSyncActive
+    enabled: isActive && cloudSyncActive
   });
   // Keep the TDZ ref bridge current so handleRequestBulkDelete (declared
   // above) resolves modal author names from this render's roster. Same
