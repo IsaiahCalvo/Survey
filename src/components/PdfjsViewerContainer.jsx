@@ -49,12 +49,14 @@ import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToS
 import {
   ELASTIC_ZOOM_EASE_MS,
   WHEEL_OVERSCROLL_IDLE_MS,
+  WHEEL_OVERSCROLL_MAC_IDLE_MS,
   capBounceVelocity,
   composeElasticTransform,
   composeReleaseLeftover,
   createLayoutShiftHold,
   createOffsetSpring,
   createWheelOverscroll,
+  createZoomNotchBounce,
   criticallyDampedSpring,
   easeInOutSine,
   inverseRubberBand,
@@ -64,6 +66,8 @@ import {
   resolveFitCentreShift,
   rubberClamp,
   rubberScale,
+  stepRubberScale,
+  zoomLimitSpring,
 } from '../utils/elasticEdges.js';
 import {
   DRAG_AXIS_SNAP,
@@ -193,6 +197,7 @@ const MOBILE_BASE_MAX_SCALE = 1.25;
 // a moment while panning.
 const DESKTOP_TILED_BACKDROP_SCALE = 2;
 const SETTLE_MS = 110;      // commit the gesture this long after the last wheel tick
+const ZOOM_OVERSHOOT_SETTLE_MS = 65; // snappy finger-lift settle when overshooting min/max zoom
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 const PAN_START_EVENT = 'survey-pdfjs-pan-start';
 const PAN_END_EVENT = 'survey-pdfjs-pan-end';
@@ -1851,6 +1856,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Desktop wheel/trackpad edge overscroll (screen px), owned by the wheel
   // controller alone and drawn on top of any other live transform.
   const wheelShiftRef = useRef({ x: 0, y: 0 });
+  // Desktop mouse-wheel Ctrl+wheel zoom-limit notch bounce (log-scale pulse),
+  // anchored under the cursor and drawn on top of any live transform.
+  const zoomNotchBounceRef = useRef(null);
+  if (!zoomNotchBounceRef.current) zoomNotchBounceRef.current = createZoomNotchBounce();
+  const zoomNotchRafRef = useRef(0);
+  const zoomNotchVisualRef = useRef({ z: 1, ax: 0, ay: 0 });
   // Phone: the viewer resized under a gesture (iOS Safari toolbar / viewport):
   // the fit-centring move is held off screen and glides home (elasticEdges.js).
   const layoutShiftRef = useRef(null);
@@ -3204,7 +3215,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const top = Math.min(Math.max(0, freeTopAt(targetScale)), maxTop);
     let shownX = newX - left;
     let shownY = newY - top;
-    if (elastic) {
+    if (elastic || gesture.elasticZoom) {
       // A page that fits sideways does not stretch sideways under a pinch
       // either (docs/VIEWER-PAN-ZOOM-RULES.md): it zooms about its centre
       // line until it is wider than the band between the panels.
@@ -3385,14 +3396,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!Number.isFinite(a.t0)) a.t0 = now - (a.lead || 0);
     let done;
     if (a.kind === 'ease') {
-      // Zoom limit: Drawboard eases scale AND position home together in ~250 ms
-      // (ease-in-out), pivoting on the fingers' point so it stays put.
-      const u = (now - a.t0) / ELASTIC_ZOOM_EASE_MS;
-      const k = 1 - easeInOutSine(u);
-      e.z = Math.exp(Math.log(a.z0) * k);
-      e.tx = a.tx0 * k;
-      e.ty = a.ty0 * k;
-      done = u >= 1;
+      // Zoom limit: immediate Apple/Drawboard rubber-band spring return (starts
+      // moving at full speed on release with zero ease-in pause, settles cleanly
+      // in ~350 ms pivoting on the fingers'/cursor's anchor point).
+      const t = Math.max(0, now - a.t0) / 1000;
+      const next = zoomLimitSpring(a.z0, a.tx0, a.ty0, t);
+      e.z = next.z;
+      e.tx = next.tx;
+      e.ty = next.ty;
+      done = next.done;
     } else {
       // Edge: critically damped spring (never passes the edge).
       const t = Math.max(0, now - a.t0) / 1000;
@@ -3409,6 +3421,51 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     paintLiveFrame();
     if (done) window.dispatchEvent(new Event(ELASTIC_SETTLED_EVENT));
   }, [paintLiveFrame, publishElasticZoom]);
+
+  const stopZoomNotchBounce = useCallback((render = false) => {
+    if (zoomNotchRafRef.current) cancelAnimationFrame(zoomNotchRafRef.current);
+    zoomNotchRafRef.current = 0;
+    zoomNotchBounceRef.current?.reset();
+    const had = Math.abs((zoomNotchVisualRef.current?.z || 1) - 1) > 1e-4;
+    zoomNotchVisualRef.current = { z: 1, ax: 0, ay: 0 };
+    if (had) {
+      publishElasticZoom(elasticRef.current ? elasticRef.current.z : 1);
+      if (render) paintLiveFrame();
+    }
+  }, [paintLiveFrame, publishElasticZoom]);
+
+  const stepZoomNotchBounce = useCallback((now) => {
+    zoomNotchRafRef.current = 0;
+    const bounce = zoomNotchBounceRef.current;
+    if (!bounce) return;
+    const shown = bounce.frame(now);
+    const prevZ = zoomNotchVisualRef.current.z;
+    zoomNotchVisualRef.current = {
+      ...zoomNotchVisualRef.current,
+      z: shown.active ? shown.z : 1,
+    };
+    if (shown.active) {
+      zoomNotchRafRef.current = requestAnimationFrame(stepZoomNotchBounce);
+    }
+    if (Math.abs(zoomNotchVisualRef.current.z - prevZ) > 1e-5 || !shown.active) {
+      publishElasticZoom((elasticRef.current ? elasticRef.current.z : 1) * zoomNotchVisualRef.current.z);
+      paintLiveFrame();
+    }
+  }, [paintLiveFrame, publishElasticZoom]);
+
+  const kickZoomNotchBounce = useCallback(({ direction, intensity, ax, ay, now }) => {
+    const bounce = zoomNotchBounceRef.current;
+    if (!bounce) return;
+    zoomNotchVisualRef.current = {
+      z: zoomNotchVisualRef.current.z,
+      ax,
+      ay,
+    };
+    bounce.kick({ direction, intensity, now });
+    if (!zoomNotchRafRef.current) {
+      zoomNotchRafRef.current = requestAnimationFrame(stepZoomNotchBounce);
+    }
+  }, [stepZoomNotchBounce]);
 
   // Start (or retarget) the return home from the CURRENT leftover.
   // `startAt` (ms, the rAF clock) is when the spring really began - a glide
@@ -3432,7 +3489,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       ty0: e.ty,
       vx0: vx,
       vy0: vy,
-      lead: zoomed ? 0 : lead,
+      lead: zoomed ? 1000 / 60 : lead,
     };
     if (!zoomed && Number.isFinite(now)) {
       if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
@@ -3474,6 +3531,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   useEffect(() => () => {
     if (elasticRafRef.current) cancelAnimationFrame(elasticRafRef.current);
     elasticRafRef.current = 0;
+    if (zoomNotchRafRef.current) cancelAnimationFrame(zoomNotchRafRef.current);
+    zoomNotchRafRef.current = 0;
   }, []);
 
   const commitGesture = useCallback(() => {
@@ -3811,8 +3870,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         gestureRef.current = {
           regime,
           // Desktop trackpad pinch (owner 2026-10-02): past min/max zoom it
-          // overshoots with the phone's resistance and eases back after the
-          // settle. Mouse-wheel notches and reduced motion keep the hard clamp.
+          // overshoots with the phone's resistance and springs back on release.
           elasticZoom: regime === 'trackpad' && !isMobileSurface && !prefersReducedMotion(),
           rawScale: scaleRef.current,
           originScale: scaleRef.current,
@@ -3839,19 +3897,36 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       );
       const g = gestureRef.current;
       // A mouse-wheel notch (owner 2026-10-07): adds to the glide's target and
-      // the shown scale chases it, anchored under the cursor. Trackpad pinch
-      // ticks stay 1:1 with the fingers (below).
+      // the shown scale chases it, anchored under the cursor. Pushing past
+      // min/max zoom gives a crisp elastic notch bounce instead of a dead wall.
       if (regime === 'notch' && !g.elasticZoom && !prefersReducedMotion()) {
         const glide = zoomGlideRef.current;
-        const target = getWheelZoomScale(glide ? glide.target : committed * liveZoomRef.current, {
+        const baseScale = glide ? glide.target : committed * liveZoomRef.current;
+        const unclampedTarget = getWheelZoomScale(baseScale, {
           deltaY: e.deltaY,
           maximumDelta: 1000,
           deltaMode: e.deltaMode,
           viewportHeight: el.clientHeight,
-          minimumScale,
-          maximumScale: maxScale,
+          minimumScale: 1e-6,
+          maximumScale: Number.POSITIVE_INFINITY,
         });
+        const target = Math.min(maxScale, Math.max(minimumScale, unclampedTarget));
         const now = performance.now();
+        const overMax = unclampedTarget > maxScale * (1 + 1e-4);
+        const underMin = unclampedTarget < minimumScale * (1 - 1e-4);
+        if (overMax || underMin) {
+          const origin = readZoomScrollOrigin(el);
+          const excessLog = Math.abs(Math.log(unclampedTarget / Math.max(1e-6, target)));
+          kickZoomNotchBounce({
+            direction: overMax ? 1 : -1,
+            intensity: Math.max(0.45, Math.min(1.4, excessLog / 0.14)),
+            ax: origin.left + cursorX,
+            ay: origin.top + cursorY,
+            now,
+          });
+        } else if (zoomNotchBounceRef.current?.active()) {
+          stopZoomNotchBounce(false);
+        }
         const next = glide
           ? retargetZoomGlide(glide, { to: target, now, mode: 'chase' })
           : createZoomGlide({ from: committed * liveZoomRef.current, to: target, now, mode: 'chase' });
@@ -3860,13 +3935,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         zoomGlideScheduleRef.current?.();
         return;
       }
-      // A trackpad tick during a glide carries on 1:1 from what is shown.
+      // A trackpad tick during a glide or notch bounce carries on 1:1 from what is shown.
+      if (zoomNotchBounceRef.current?.active()) stopZoomNotchBounce(false);
       if (zoomGlideRef.current) {
         if (zoomGlideRafRef.current) cancelAnimationFrame(zoomGlideRafRef.current);
         zoomGlideRafRef.current = 0;
         zoomGlideRef.current = null;
       }
-      const nextScale = getWheelZoomScale(g.elasticZoom ? g.rawScale : committed * liveZoomRef.current, {
+      let nextScale = getWheelZoomScale(g.elasticZoom ? g.rawScale : committed * liveZoomRef.current, {
         deltaY: e.deltaY,
         // Rate per EVENT, like Walkthu (owner 2026-10-02): a pixel delta under
         // 50 is a pinch tick, a bigger one or a line/page delta is a notch, so
@@ -3877,23 +3953,39 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         minimumScale: g.elasticZoom ? 1e-6 : minimumScale,
         maximumScale: g.elasticZoom ? Number.POSITIVE_INFINITY : maxScale,
       });
-      // elasticZoom: the unclamped request is kept so pinching back in first
-      // unwinds the overshoot, exactly like the phone's finger ratio.
-      if (g.elasticZoom) g.rawScale = nextScale;
+      // elasticZoom: bound raw excess near the asymptote and unwind immediately
+      // when reversing direction so pinching back in never hits a dead-zone.
+      if (g.elasticZoom) {
+        const factor = nextScale / Math.max(1e-6, g.rawScale);
+        const stepped = stepRubberScale(g.rawScale, factor, minimumScale, maxScale);
+        nextScale = stepped.rawScale;
+        g.rawScale = nextScale;
+      }
       const previewScale = g.elasticZoom ? rubberScale(nextScale, minimumScale, maxScale) : nextScale;
       liveZoomRef.current = previewScale / committed;
       if (!wheelRafRef.current) wheelRafRef.current = requestAnimationFrame(applyWheelZoom);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = setTimeout(commitGesture, SETTLE_MS);
+      const overshooting = g.elasticZoom
+        && (previewScale > maxScale * (1 + 1e-4) || previewScale < minimumScale * (1 - 1e-4));
+      settleTimerRef.current = setTimeout(commitGesture, overshooting ? ZOOM_OVERSHOOT_SETTLE_MS : SETTLE_MS);
+    };
+    // macOS Safari reports exact trackpad pinch lift via gestureend: spring
+    // back at 0 ms instead of waiting out the wheel settle timeout.
+    const onGestureEnd = () => {
+      if (!gestureRef.current?.elasticZoom) return;
+      if (settleTimerRef.current) { clearTimeout(settleTimerRef.current); settleTimerRef.current = null; }
+      commitGesture();
     };
     el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('gestureend', onGestureEnd, { passive: true });
     return () => {
       el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('gestureend', onGestureEnd);
       if (wheelRafRef.current) cancelAnimationFrame(wheelRafRef.current);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       setZoomInteraction(false);
     };
-  }, [applyWheelZoom, commitGesture, isMobileSurface, setZoomInteraction]);
+  }, [applyWheelZoom, commitGesture, isMobileSurface, kickZoomNotchBounce, setZoomInteraction, stopZoomNotchBounce]);
 
   // Desktop edge bounce (owner 2026-10-02: "I wish the desktop version had the
   // same slingshot/spring back effect when scrolling to extents"). Scrolling
@@ -4000,48 +4092,67 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (prefersReducedMotion()) { if (manual) scrollManually(dx, dy); return; }
       const left = Math.min(Math.max(0, el.scrollLeft), maxLeft);
       const top = Math.min(Math.max(0, el.scrollTop), maxTop);
-      // One axis per event (the dominant one), so a vertical swipe's sideways
-      // jitter never wobbles the page at the left/right edge.
-      const vertical = Math.abs(dy) >= Math.abs(dx);
-      const delta = vertical ? dy : dx;
-      if (!delta) {
+      if (!dx && !dy) {
         // An empty event is how Chrome on Windows says the fingers lifted.
-        if (nativeBounceOn && !dx && !dy) {
-          overscroll.wheel(lastAxis, { delta: 0, room: 0, dimension: 1, now });
+        if (nativeBounceOn) {
+          overscroll.wheel('x', { delta: 0, room: 0, dimension: 1, now });
+          overscroll.wheel('y', { delta: 0, room: 0, dimension: 1, now });
           if (overscroll.active()) schedule();
         }
         return;
       }
-      lastAxis = vertical ? 'y' : 'x';
-      const result = overscroll.wheel(vertical ? 'y' : 'x', {
-        delta,
-        room: vertical
-          ? (delta > 0 ? maxTop - top : top)
-          : (delta > 0 ? maxLeft - left : left),
-        dimension: vertical ? el.clientHeight : el.clientWidth,
-        notch,
-        cancelable: e.cancelable,
-        now,
-      });
-      if (result.prevent) {
-        e.preventDefault();
-        // The event pulled a stretch back in: only what is left of it
-        // scrolls on that axis.
-        if (manual) scrollManually(vertical ? dx : 0, vertical ? 0 : dy);
-        if (result.scrollBy) {
-          if (vertical) el.scrollTop += result.scrollBy;
-          else el.scrollLeft += result.scrollBy;
-        }
-      } else if (manual) {
+      // Keep the wheel stream cancelable whenever we are already overscrolling
+      // or pushing past an edge so Chrome never switches mid-gesture to
+      // non-cancelable native scroll when pulling back in with fingers down.
+      const roomX = dx > 0 ? maxLeft - left : left;
+      const roomY = dy > 0 ? maxTop - top : top;
+      const hittingEdge = (!range.fits && dx !== 0 && Math.abs(dx) > roomX)
+        || (dy !== 0 && Math.abs(dy) > roomY);
+      const edgeManual = !manual && e.cancelable
+        && (overscroll.active() || hittingEdge)
+        && !hasOwnWheelScroller(e.target, el);
+      if (edgeManual) e.preventDefault();
+      const ownsScroll = manual || edgeManual;
+      const feedX = !range.fits && dx !== 0;
+      const feedY = dy !== 0;
+      if (feedY) lastAxis = 'y';
+      else if (feedX) lastAxis = 'x';
+      const resX = feedX
+        ? overscroll.wheel('x', {
+          delta: dx,
+          room: roomX,
+          dimension: el.clientWidth,
+          notch,
+          cancelable: e.cancelable,
+          now,
+        })
+        : { prevent: false, scrollBy: 0 };
+      const resY = feedY
+        ? overscroll.wheel('y', {
+          delta: dy,
+          room: roomY,
+          dimension: el.clientHeight,
+          notch,
+          cancelable: e.cancelable,
+          now,
+        })
+        : { prevent: false, scrollBy: 0 };
+      if (resX.prevent || resY.prevent) {
+        if (e.cancelable) e.preventDefault();
+        const scrollX = resX.prevent ? resX.scrollBy : (ownsScroll ? dx : 0);
+        const scrollY = resY.prevent ? resY.scrollBy : (ownsScroll ? dy : 0);
+        scrollManually(scrollX, scrollY);
+      } else if (ownsScroll) {
         scrollManually(dx, dy);
       }
       if (overscroll.active()) schedule();
       if (idleTimer) clearTimeout(idleTimer);
+      const idleMs = nativeBounceOn ? WHEEL_OVERSCROLL_MAC_IDLE_MS : WHEEL_OVERSCROLL_IDLE_MS;
       idleTimer = setTimeout(() => {
         idleTimer = 0;
         overscroll.idle(performance.now());
         if (overscroll.active()) schedule();
-      }, WHEEL_OVERSCROLL_IDLE_MS);
+      }, idleMs);
     };
     const onVisibility = () => { if (document.hidden) release(); };
     const onPress = () => { if (overscroll.active()) release(); };
@@ -6872,6 +6983,29 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     renderedLiveZoom = composed.s;
     liveTranslateX = composed.tx;
     liveTranslateY = composed.ty;
+  }
+  // Desktop mouse-wheel Ctrl+wheel zoom-limit notch bounce: composed on top of
+  // whatever else is showing, pivoting under the cursor.
+  const zoomNotch = zoomNotchVisualRef.current;
+  if (zoomNotch && Math.abs(zoomNotch.z - 1) > 1e-4) {
+    if (!zoomGesture && !elasticRef.current) {
+      liveTransformOrigin = `${zoomNotch.ax}px ${zoomNotch.ay - layout.padTop}px`;
+      renderedLiveZoom = zoomNotch.z;
+    } else {
+      const baseOx = zoomGesture
+        ? (livePreview ? livePreview.anchorX : zoomGesture.originContentX)
+        : (elasticRef.current ? elasticRef.current.ax : zoomNotch.ax);
+      const baseOy = zoomGesture
+        ? (livePreview ? livePreview.anchorY : zoomGesture.originContentY)
+        : (elasticRef.current ? elasticRef.current.ay : zoomNotch.ay);
+      const composed = composeElasticTransform(
+        { ox: baseOx, oy: baseOy, s: renderedLiveZoom, tx: liveTranslateX, ty: liveTranslateY },
+        { ox: zoomNotch.ax, oy: zoomNotch.ay, s: zoomNotch.z, tx: 0, ty: 0 },
+      );
+      renderedLiveZoom = composed.s;
+      liveTranslateX = composed.tx;
+      liveTranslateY = composed.ty;
+    }
   }
   // Desktop wheel/trackpad edge overscroll: its own offset (one owner, the
   // wheel controller), added on top of whatever else is showing.
