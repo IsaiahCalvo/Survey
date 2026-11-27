@@ -1320,6 +1320,7 @@ export default function ProjectsFolderTree({
               const isSel = selProj.has(p.id);
               const isPinned = pinnedIds.has(p.id);
               const projMembers = projectTeam(p);
+              const nameTip = tip(p.name, 'right');
               return (
                 <SortableRearrangeRow
                   key={p.id}
@@ -1333,6 +1334,8 @@ export default function ProjectsFolderTree({
                     className={`projects-list-row${(jobsEdit ? isSel : isOpen) ? ' is-selected' : ''}`}
                     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+                    onFocus={(event) => { if (event.target === event.currentTarget) nameTip.onFocus?.(event); }}
+                    onBlur={(event) => { if (event.target === event.currentTarget) nameTip.onBlur?.(event); }}
                     {...keyboardControlProps()}
                     style={{
                       display: 'grid',
@@ -1364,9 +1367,9 @@ export default function ProjectsFolderTree({
                         isDragging={isDragging}
                       />
                     )}
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0 }} {...nameTip}>
                       {/* lineHeight 1.2 so the stack centres on its ink (2026-09-23). */}
-                      <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
+                      <div className="projects-list-row__name" style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
                       {/* Owner-avatar stack (first 3 team members) + member
                           count. Every project shows at least the owner glyph —
                           ids are resolved to real initials, never shown raw. */}
