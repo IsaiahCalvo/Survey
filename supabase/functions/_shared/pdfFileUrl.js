@@ -9,8 +9,8 @@
 // this time.
 //
 // Never past Cloudflare's free tier: every R2 operation is reserved first with
-// public.r2_reserve (migration 20261028090000), which refuses at 80% of each
-// allowance. A refusal, or a failed reservation, answers "use Supabase".
+// public.r2_reserve (migration 20261028090000), which refuses at Survey's share
+// of the account-wide allowance (public.r2_limits()). A refusal, or a failed reservation, answers "use Supabase".
 import { PART_SIZE, headObject, presignGet, putObjectStream, r2KeyForDocument } from './r2.js';
 
 // Same lifetime as the Supabase signed links the app streams from

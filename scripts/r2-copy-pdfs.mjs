@@ -155,5 +155,5 @@ if (prune) {
   log(`prune: ${extra} copies with no PDF in Storage, ${removed} deleted.`);
 }
 
-if (counts.over_budget) log('Stopped short: the R2 free-tier cap (80%) was reached; the rest stays on Supabase.');
+if (counts.over_budget) log('Stopped short: Survey's share of the R2 free tier was reached; the rest stays on Supabase.');
 if (counts.failed || Object.keys(counts).some((k) => k.startsWith('download_'))) process.exit(1);
