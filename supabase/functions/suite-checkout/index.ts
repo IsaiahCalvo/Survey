@@ -9,7 +9,7 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { parseBody, s } from '../_shared/inputSchema.js';
 import {
-    LOOKUP_KEYS, PLAN_NAMES, SELLABLE_PLANS, cleanEmail, suiteReturnUrl,
+    LOOKUP_KEYS, PENDING_PLANS, PLAN_NAMES, SELLABLE_PLANS, cleanEmail, suiteReturnUrl,
 } from '../_shared/suitePlans.js';
 
 const corsHeaders = {
@@ -42,6 +42,9 @@ Deno.serve(async (req) => {
             plan: keyof typeof LOOKUP_KEYS, cycle?: 'monthly' | 'yearly', email?: string, returnUrl?: string,
         };
 
+        if (PENDING_PLANS.includes(plan)) {
+            return json({ error: 'Checkout for this plan opens soon. Email us and we will set it up for you.' }, 409);
+        }
         if (!SELLABLE_PLANS.includes(plan)) {
             return json({ error: 'Plot is free while it is in early access, and it comes with the Kal Voe Suite.' }, 409);
         }

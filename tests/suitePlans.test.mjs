@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   appsForPlan, cleanEmail, LOOKUP_KEYS, planForPrice, planIncludesSurvey,
-  sameSecret, SELLABLE_PLANS, suiteReturnUrl, DEFAULT_RETURN_URL,
+  sameSecret, SELLABLE_PLANS, PENDING_PLANS, suiteReturnUrl, DEFAULT_RETURN_URL,
 } from '../supabase/functions/_shared/suitePlans.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -32,7 +32,8 @@ describe('suite plans', () => {
   });
 
   it('does not sell Plot on its own while it has no paid features', () => {
-    assert.deepEqual(SELLABLE_PLANS, ['survey', 'walkthru', 'suite']);
+    assert.deepEqual(SELLABLE_PLANS, ['survey']);
+    assert.deepEqual(PENDING_PLANS, ['walkthru', 'suite']);
   });
 
   it('only returns buyers to our own sites', () => {

@@ -82,7 +82,10 @@ test('every inline script on a site page is allowed by hash; no inline handlers'
 
 test('the site policy only reaches what the pages use', () => {
   assert.doesNotMatch(directive(siteRule, 'connect-src'), /github/, '/status reads its same-origin public snapshot');
-  assert.ok(!/supabase|r2\.cloudflarestorage|microsoft/.test(policy(siteRule)), 'the site pages never call the backend');
+  // The one backend call: kalvoe.com/buy asks the suite-checkout function for a Stripe checkout.
+  const connect = directive(siteRule, 'connect-src');
+  assert.ok(connect.includes('https://cvamwtpsuvxvjdnotbeg.supabase.co'), 'the buy page reaches suite-checkout');
+  assert.ok(!/wss:|r2\.cloudflarestorage|microsoft/.test(policy(siteRule)), 'the site pages reach nothing else in the backend');
   for (const d of ["object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'"]) {
     assert.ok(policy(siteRule).includes(d), d);
   }

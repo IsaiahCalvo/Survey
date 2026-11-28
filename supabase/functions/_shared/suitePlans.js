@@ -7,7 +7,12 @@ export const SUITE_PLANS = ['survey', 'walkthru', 'plot', 'suite'];
 
 // Plot Pro has no paid features yet: Plot is free in full, and comes with the
 // suite. Its price exists in Stripe but nothing sells it on its own until it does.
-export const SELLABLE_PLANS = ['survey', 'walkthru', 'suite'];
+// Walkthru Pro and the Suite wait until Walkthru turns a paid plan on by itself
+// (Walkthru reads suite_entitlements with KALVOE_SUITE_KEY). Until then nobody
+// is asked for a card for something that would not unlock. Move them back into
+// SELLABLE_PLANS, and drop `soon` on the buy page, once that is live.
+export const PENDING_PLANS = ['walkthru', 'suite'];
+export const SELLABLE_PLANS = ['survey'];
 
 export const LOOKUP_KEYS = {
   survey: { monthly: 'survey_pro_monthly', yearly: 'survey_pro_yearly' },
