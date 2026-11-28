@@ -187,8 +187,8 @@ const APP_PLAN_ITEMS = {
 // then a free account, then Pro. Only facts the apps already have.
 const LADDER = {
   walkthru: {
-    none: ['Try a walk without an account', 'No card and no sign-up'],
-    noneCta: [APPS.walkthru.url, 'Try a walk'],
+    none: ['Open a PDF in your browser, mark it up and export it', 'The file stays on your device', 'No card and no sign-up'],
+    noneCta: [APPS.walkthru.url + '/try', 'Try Walkthru'],
     account: ['Up to 2 active walkthroughs and 1 template', 'Photos, videos, notes and audio recording', '60 cloud transcription minutes a month', '2GB of storage'],
     accountCta: [APPS.walkthru.url, 'Create a free account'],
   },
@@ -336,7 +336,7 @@ const APP_PAGES = {
       ['Do I need the other apps to use Walkthru?', 'No. Walkthru works on its own. In the Kal Voe Suite, a walk can also go straight to Plot.'],
       ['Does it work on a phone?', 'Yes. Walkthru is made for walking a site on a phone or tablet, and you can pick the walk up on a computer later.'],
       ['Can the customer see the walk?', 'Only if you share it. You can invite teammates or the customer with a link.'],
-      ['Is Walkthru free?', 'You can try a walk without an account. A free account keeps up to 2 active walkthroughs with 60 cloud transcription minutes a month.'],
+      ['Is Walkthru free?', 'Yes. You can open a PDF and mark it up with no account. A free account adds walkthroughs, up to 2 active at a time, with 60 cloud transcription minutes a month.'],
       ['How much does it cost?', `Walkthru Pro is ${money(APPS.walkthru.monthly)} a month or ${money(APPS.walkthru.yearly)} a year on its own, with a ${TRIAL}, or included in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month.`],
     ],
   },
