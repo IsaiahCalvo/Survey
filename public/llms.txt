@@ -4,11 +4,12 @@
 
 Every markup tool in Survey is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects.
 
-Pricing (4 tiers):
-- Free ($0/mo): 1 project, 5 documents, 100MB, every markup tool free, 58 free browser PDF tools (files never leave the device).
-- Single-App Pro: Survey $9.99/mo ($99/yr), Walkthru $12/mo, or Plot $25/mo — unlimited projects and documents, 10GB storage, site surveys with data export, spaces and regions, templates, live editing together, OneDrive.
-- Kal Voe Suite ($29/user/mo or $290/user/yr): all 3 apps bundled (Walkthru + Plot + Survey), 50GB per user, direct job handoffs from site walk to shop drawings to field survey.
-- Enterprise ($45/user/mo or custom): everything in Kal Voe Suite for every seat, SSO, seat management, 1TB shared team storage, audit log, priority support, custom templates and export layouts.
+Pricing:
+- No sign-up ($0): mark up a PDF with Continue without an account, plus 58 free browser PDF tools (files never leave the device).
+- Free account ($0/mo): 1 project, 5 documents, 100MB, every markup tool free.
+- Pro, any one app: Survey or Walkthru, $12/mo or $120/yr (2 months free), with a 7-day free trial. Survey Pro adds unlimited projects and documents, 10GB storage, site surveys with data export, spaces and regions, templates, live editing together, OneDrive. Plot is free while in early access.
+- Kal Voe Suite ($24/user/mo or $240/user/yr, 7-day free trial): all 3 apps bundled (Walkthru + Plot + Survey), 50GB per user, direct job handoffs from site walk to shop drawings to field survey. $36/mo bought separately, so it saves $12/mo.
+- Enterprise ($35/user/mo, contact us): everything in Kal Voe Suite for every seat, SSO, seat management, 1TB shared team storage, audit log, priority support, custom templates and export layouts.
 
 ## Pages
 
@@ -16,7 +17,7 @@ Pricing (4 tiers):
 - [Survey Home](https://surveytool.app/welcome): what Survey is and who it is for
 - [Features](https://surveytool.app/features): site surveys with data export, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
 - [Devices](https://surveytool.app/devices): desktop, tablet and phone
-- [Pricing](https://surveytool.app/pricing): Free, Single-App Pro, Kal Voe Suite and Enterprise plans
+- [Pricing](https://surveytool.app/pricing): free with no sign-up, free account, Pro, Kal Voe Suite and Enterprise
 - [FAQ](https://surveytool.app/faq): common questions
 - [Use Survey with your AI](https://surveytool.app/use-with-ai): connect Claude or ChatGPT to read your drawings as you, with your plan and role (read-only); what it can and cannot do, and how to turn it off. MCP server: https://surveytool.app/mcp
 - [Field surveys](https://surveytool.app/use-cases/field-surveys): Walk a site with the plans on a tablet, count what is there, tag what needs work and export the totals as data.

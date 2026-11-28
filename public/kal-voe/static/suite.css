@@ -225,6 +225,15 @@ p{margin:0 0 1em}
 .plans.apps-row{grid-template-columns:repeat(3,1fr)}
 .plans.other-row{grid-template-columns:1fr 1fr}
 @media (max-width:900px){.plans.apps-row,.plans.other-row{grid-template-columns:1fr}}
+.plans.ladder{grid-template-columns:repeat(3,1fr)}
+@media (max-width:900px){.plans.ladder{grid-template-columns:1fr}}
+.ladder-h{font-size:22px;margin:40px 0 16px;display:flex;align-items:center;gap:10px}
+.ladder-h:first-child{margin-top:0}
+.rung .num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--raised);border:1px solid var(--line-strong);font-size:13.5px;font-weight:650;color:var(--text);flex:none}
+.email-field input{width:100%;max-width:420px;margin-top:6px;padding:12px 14px;border-radius:10px;border:1px solid var(--line-strong);background:var(--panel);color:var(--text);font:inherit;font-size:16px}
+.email-field input:focus{outline:2px solid var(--accent,currentColor);outline-offset:2px}
+.email-field .note{margin:8px 0 0;font-size:13.5px;color:var(--text-3)}
+.summary .btn[disabled]{opacity:.6;cursor:progress}
 .plan{display:flex;flex-direction:column;padding:30px;border-radius:20px;background:var(--panel);border:1px solid var(--line);text-align:left}
 .plan header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
 .plan header img{width:40px;height:40px}
@@ -284,10 +293,6 @@ p{margin:0 0 1em}
 .summary h2{font-size:22px;margin-bottom:18px}
 .summary .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;font-size:15.5px;color:var(--text-2)}
 .summary .row.total{border-top:1px solid var(--line-strong);margin-top:8px;padding-top:16px;font-size:18px;font-weight:650;color:var(--text)}
-.seats{display:flex;align-items:center;gap:8px}
-.seats button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line-strong);background:var(--panel);color:var(--text);font-size:18px;cursor:pointer;transition:background-color .15s var(--ease)}
-.seats button:hover{background:var(--raised)}
-.seats output{min-width:28px;text-align:center;font-weight:650}
 .summary .btn{width:100%;margin-top:20px}
 .summary .note{margin:14px 0 0;font-size:13.5px;color:var(--text-3)}
 

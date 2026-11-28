@@ -19,6 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TOOLS as PDF_TOOLS } from './free-tools-catalog.mjs';
 import { ORG as SURVEY_ORG } from './build-marketing.mjs';
 import * as D from './suite-site/demos.mjs';
+import { APP_PRICES, SUITE_PRICE, ENTERPRISE_PRICE, TRIAL_DAYS, CHECKOUT_ENDPOINT, money, appYearSave, SEPARATE_MONTHLY, SEPARATE_YEARLY, SUITE_SAVE_MONTHLY, SUITE_SAVE_YEARLY, SUITE_YEAR_SAVE } from './pricing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'kal-voe');
 export const SITE = 'https://kalvoe.com';
@@ -29,46 +30,36 @@ const MAIL = 'mailto:' + MAIL_TO;
 const YEAR = 2026;
 
 // ---------- Products and prices ----------
-// Prices are the ones already published on surveytool.app/pricing.
-// Walkthru and Plot have no yearly price yet, so their yearly view says so.
+// Prices come from scripts/pricing.mjs, shared with surveytool.app.
 export const APPS = {
   walkthru: {
     id: 'walkthru', name: 'Walkthru', role: 'Walk', color: 'walkthru',
     url: 'https://walkthru.tools', open: 'Open Walkthru',
     short: 'Walk the site with the customer and capture everything.',
     tagline: 'Walk the site. Capture every detail.',
-    monthly: 12, yearly: null,
+    ...APP_PRICES.walkthru,
   },
   plot: {
     id: 'plot', name: 'Plot', role: 'Design', color: 'plot',
     url: 'https://plot-taupe-eight.vercel.app', open: 'Open Plot',
     short: 'Turn the walk into shop drawings, schedules and issued PDFs.',
     tagline: 'Draw the plan your installers build from.',
-    monthly: 25, yearly: null,
+    ...APP_PRICES.plot,
   },
   survey: {
     id: 'survey', name: 'Survey', role: 'Verify', color: 'survey',
     url: 'https://surveytool.app', open: 'Open Survey',
     short: 'Mark up drawings, run site surveys and track every install.',
     tagline: 'Verify the build, device by device.',
-    monthly: 9.99, yearly: 99,
+    ...APP_PRICES.survey,
   },
 };
-export const SUITE = { name: 'Kal Voe Suite', monthly: 29, yearly: 290, storage: '50GB per user' };
-export const ENTERPRISE = { name: 'Enterprise', monthly: 45 };
-// Fill these in with Stripe Payment Links once they exist. Until then the buy
-// page sends each choice to the app's own sign-up, or to email.
-export const CHECKOUT_LINKS = {
-  walkthru: { monthly: '', yearly: '' },
-  plot: { monthly: '', yearly: '' },
-  survey: { monthly: '', yearly: '' },
-  suite: { monthly: '', yearly: '' },
-};
+export const SUITE = { name: 'Kal Voe Suite', ...SUITE_PRICE, storage: '50GB per user' };
+export const ENTERPRISE = { name: 'Enterprise', ...ENTERPRISE_PRICE };
 const ORDER = ['walkthru', 'plot', 'survey'];
-const money = (n) => '$' + (Number.isInteger(n) ? String(n) : n.toFixed(2));
-const round2 = (n) => Math.round(n * 100) / 100;
-const separateMonthly = round2(ORDER.reduce((t, k) => t + APPS[k].monthly, 0)); // 46.99
-const suiteSaveMonthly = round2(separateMonthly - SUITE.monthly); // 17.99
+const separateMonthly = SEPARATE_MONTHLY; // 36
+const suiteSaveMonthly = SUITE_SAVE_MONTHLY; // 12
+const TRIAL = `${TRIAL_DAYS}-day free trial`;
 
 export const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -174,41 +165,86 @@ function suitePlan() {
     <h3>${SUITE.name}</h3>
     <p class="lede" style="font-size:17px">All three apps under one account. Walk the site in Walkthru, draw it in Plot, verify it in Survey, and pass the job along without retyping it.</p>
     <div class="amt"><strong data-monthly="${money(SUITE.monthly)}" data-yearly="${money(SUITE.yearly)}">${money(SUITE.monthly)}</strong><span data-monthly="per user / month" data-yearly="per user / year">per user / month</span></div>
-    <p class="sub" data-monthly="Or ${money(SUITE.yearly)} per user a year, which saves $58." data-yearly="About $24.17 per user a month, billed yearly. Saves $58.">Or ${money(SUITE.yearly)} per user a year, which saves $58.</p>
+    <p class="sub" data-monthly="Or ${money(SUITE.yearly)} per user a year, which saves ${money(SUITE_YEAR_SAVE)}. ${TRIAL}." data-yearly="${money(SUITE.yearly / 12)} per user a month, billed yearly. Saves ${money(SUITE_YEAR_SAVE)}. ${TRIAL}.">Or ${money(SUITE.yearly)} per user a year, which saves ${money(SUITE_YEAR_SAVE)}. ${TRIAL}.</p>
     <a class="btn primary lg" ${buyHref('suite')}>Get the suite</a>
   </div>
   <div>
     <ul>${li(['Walkthru, Plot and Survey, all included', 'One Kal Voe account on desktop, tablet and phone', `${SUITE.storage} of storage`, 'Hand jobs from Walkthru to Plot to Survey', 'Everything in each app’s Pro plan', 'Live team editing and OneDrive sync'])}</ul>
-    <div class="math">Buying the three apps one by one costs ${money(separateMonthly)} a month. The suite is ${money(SUITE.monthly)}, so you <b>save ${money(suiteSaveMonthly)} a month</b> per user.</div>
+    <div class="math">Each app is ${money(APPS.survey.monthly)} a month on its own, so all three would be ${money(separateMonthly)}. The suite is ${money(SUITE.monthly)}, so you <b>save ${money(suiteSaveMonthly)} a month</b> per user (${money(SUITE_SAVE_YEARLY)} a year on yearly plans).</div>
   </div>
 </article>`;
 }
 
+// What each app's Pro plan adds. Walkthru's come from its account-plan config
+// (walkthu repo, apps/web/src/lib/account-plan.ts).
 const APP_PLAN_ITEMS = {
-  walkthru: ['Site walks on phone, tablet and computer', 'Photos, video, notes and audio at every node', 'Transcripts and AI summaries', 'Share a walk with a link'],
+  walkthru: ['Unlimited walkthroughs', 'Cloud transcription, 50 hours a month', 'AI summary, talking points, action items and next steps', '100GB of storage, templates and exports'],
   plot: ['Devices, tags, floors and cable runs', 'Riser diagrams', 'Schedules and bill of materials in Excel', 'Title blocks and issued PDFs'],
   survey: ['Unlimited projects and documents, 10GB', 'Site surveys with Excel (.xlsx) export', 'Count markers and device tracking', 'Live team editing and OneDrive sync'],
 };
 
+// The free steps of each app, in the order a person meets them: no sign-up,
+// then a free account, then Pro. Only facts the apps already have.
+const LADDER = {
+  walkthru: {
+    none: ['Try a walk without an account', 'No card and no sign-up'],
+    noneCta: [APPS.walkthru.url, 'Try a walk'],
+    account: ['Up to 2 active walkthroughs and 1 template', 'Photos, videos, notes and audio recording', '60 cloud transcription minutes a month', '2GB of storage'],
+    accountCta: [APPS.walkthru.url, 'Create a free account'],
+  },
+  plot: {
+    none: ['The whole app runs in your browser', 'Projects saved on your device as .plt files', 'No card and no sign-up'],
+    noneCta: [APPS.plot.url, 'Open Plot'],
+    account: ['Plot accounts are coming', 'Until then, Plot is free in full'],
+    accountCta: null,
+  },
+  survey: {
+    none: ['Open a PDF from your device and mark it up', 'Choose “Continue without an account”', `${PDF_TOOLS.length} free browser PDF tools`],
+    noneCta: [APPS.survey.url, 'Open Survey'],
+    account: ['1 project, 5 documents, 100MB', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with running totals'],
+    accountCta: [APPS.survey.url + '/?signup=1', 'Create a free account'],
+  },
+};
+
+// One app's three steps, shown on its page and on /pricing.
+function ladder(k, { heading = true } = {}) {
+  const a = APPS[k];
+  const L = LADDER[k];
+  const step = (n, title, sub, items, cta, extra = '') => `<article class="plan rung"><header><span class="num">${n}</span><div><b>${title}</b><small>${sub}</small></div></header>
+  ${extra}<ul>${li(items)}</ul>${cta ? `<a class="btn ghost" href="${cta[0]}">${cta[1]}</a>` : ''}</article>`;
+  const pro = a.checkout
+    ? step(3, `${a.name} Pro`, `${money(a.monthly)} a month or ${money(a.yearly)} a year`, APP_PLAN_ITEMS[k], [`/buy?app=${k}`, `Buy ${a.name} Pro`], `<p class="sub">${TRIAL}, then ${money(a.monthly)} a month.</p>`)
+    : step(3, `${a.name} in the ${SUITE.name}`, 'Free while in early access', ['Everything in Plot is free today', `Included in the ${SUITE.name}`], ['/buy?app=suite', 'Get the suite']);
+  return `${heading ? `<h3 class="ladder-h">${appIcon(k, 28)}${a.name}</h3>` : ''}<div class="plans ladder">
+  ${step(1, 'Free, no sign-up', 'Start right now', L.none, L.noneCta)}
+  ${step(2, 'Free account', L.accountCta ? 'Sign up free, no card' : 'Coming soon', L.account, L.accountCta)}
+  ${pro}
+</div>`;
+}
+
 function appPlan(k) {
   const a = APPS[k];
-  const y = a.yearly;
+  if (!a.checkout) {
+    return `<article class="plan app-${a.color}">
+  <header>${appIcon(k, 40)}<div><b>${a.name}</b><small>${a.role} · single app</small></div></header>
+  <div class="amt"><strong>$0</strong><span>free while in early access</span></div>
+  <p class="sub">No account needed. ${a.name} is included in the ${SUITE.name}.</p>
+  <ul>${li(APP_PLAN_ITEMS[k])}</ul>
+  <a class="btn app app-${a.color}" href="${a.url}">${a.open}, free</a>
+</article>`;
+  }
   return `<article class="plan app-${a.color}">
   <header>${appIcon(k, 40)}<div><b>${a.name}</b><small>${a.role} · single app</small></div></header>
-  <div class="amt"><strong data-monthly="${money(a.monthly)}" data-yearly="${money(y ?? a.monthly)}">${money(a.monthly)}</strong><span data-monthly="/ month" data-yearly="${y ? '/ year' : '/ month'}">/ month</span></div>
-  <p class="sub" data-monthly="${y ? `Or ${money(y)} a year.` : 'Billed monthly.'}" data-yearly="${y ? `Saves ${money(round2(a.monthly * 12 - y))} a year.` : 'Monthly only for now. No yearly plan yet.'}">${y ? `Or ${money(y)} a year.` : 'Billed monthly.'}</p>
+  <div class="amt"><strong data-monthly="${money(a.monthly)}" data-yearly="${money(a.yearly)}">${money(a.monthly)}</strong><span data-monthly="/ month" data-yearly="/ year">/ month</span></div>
+  <p class="sub" data-monthly="Or ${money(a.yearly)} a year. ${TRIAL}." data-yearly="Saves ${money(appYearSave(k))} a year. ${TRIAL}.">Or ${money(a.yearly)} a year. ${TRIAL}.</p>
   <ul>${li(APP_PLAN_ITEMS[k])}</ul>
   <a class="btn app app-${a.color}" ${buyHref(k)}>Buy ${a.name}</a>
 </article>`;
 }
 
-function otherPlans() {
-  return `<article class="plan"><header>${appIcon('survey', 40)}<div><b>Free</b><small>Try Survey on one project</small></div></header>
-  <div class="amt"><strong>$0</strong><span>/ month</span></div><p class="sub">No card needed.</p>
-  <ul>${li(['1 project, 5 documents, 100MB', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with running totals', `${PDF_TOOLS.length} free browser PDF tools`])}</ul>
-  <a class="btn ghost" href="${APPS.survey.url}/?signup=1">Start free</a></article>
-  <article class="plan"><header>${appIcon('kalvoe', 40)}<div><b>Enterprise</b><small>For larger teams</small></div></header>
-  <div class="amt"><strong>${money(ENTERPRISE.monthly)}</strong><span>per user / month</span></div><p class="sub">Or a custom yearly contract.</p>
+function enterprisePlan() {
+  return `<article class="plan"><header>${appIcon('kalvoe', 40)}<div><b>Enterprise</b><small>For larger teams</small></div></header>
+  <div class="amt"><strong>${money(ENTERPRISE.monthly)}</strong><span>per user / month</span></div><p class="sub">Or a custom yearly contract. Talk to us to set it up.</p>
   <ul>${li(['Everything in the Kal Voe Suite for every user', 'Single sign-on (SSO) and seat management', '1TB shared team storage', 'Activity and security audit log', 'Priority support', 'Custom templates, title blocks and export layouts'])}</ul>
   <a class="btn ghost" href="${MAIL}?subject=Kal%20Voe%20Enterprise">Contact sales</a></article>`;
 }
@@ -229,7 +265,7 @@ function home() {
   <h1>Walk the site. Draw the plan.<br />Verify the build.</h1>
   <p class="lede">Kal Voe is a suite of three apps for building systems teams. Walkthru, Plot and Survey share one account, so a job moves from the first site walk to closeout without anyone retyping it.</p>
   <div class="ctas"><a class="btn primary lg" href="/buy?app=suite">Get the suite</a><a class="btn ghost lg" href="#apps">Explore the apps</a></div>
-  <p class="fine">Use each app on its own, or all three together. Survey has a free plan, no card needed.</p>
+  <p class="fine">Use each app on its own, or all three together. Every app can be tried free with no sign-up.</p>
   <div class="hero-stage win-frame">${D.homeFlow()}</div>
 </div></section>
 
@@ -300,7 +336,8 @@ const APP_PAGES = {
       ['Do I need the other apps to use Walkthru?', 'No. Walkthru works on its own. In the Kal Voe Suite, a walk can also go straight to Plot.'],
       ['Does it work on a phone?', 'Yes. Walkthru is made for walking a site on a phone or tablet, and you can pick the walk up on a computer later.'],
       ['Can the customer see the walk?', 'Only if you share it. You can invite teammates or the customer with a link.'],
-      ['How much does it cost?', `Walkthru is ${money(APPS.walkthru.monthly)} a month on its own, or included in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month.`],
+      ['Is Walkthru free?', 'You can try a walk without an account. A free account keeps up to 2 active walkthroughs with 60 cloud transcription minutes a month.'],
+      ['How much does it cost?', `Walkthru Pro is ${money(APPS.walkthru.monthly)} a month or ${money(APPS.walkthru.yearly)} a year on its own, with a ${TRIAL}, or included in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month.`],
     ],
   },
   plot: {
@@ -326,7 +363,8 @@ const APP_PAGES = {
       ['Can I start in Plot without a Walkthru walk?', 'Yes. Plot works on its own with any floor plan. In the Kal Voe Suite, you can also open a Walkthru walk in it.'],
       ['What can I export?', 'Issued PDF sets with title blocks, and device schedules and a bill of materials as Excel spreadsheets.'],
       ['Does it handle more than one floor?', 'Yes. Devices are organized by floor, and the riser diagram shows how the floors connect.'],
-      ['How much does it cost?', `Plot is ${money(APPS.plot.monthly)} a month on its own, or included in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month.`],
+      ['Is Plot free?', 'Yes, while Plot is in early access. It runs in your browser with no account, and your projects are saved on your device as .plt files.'],
+      ['How much does it cost?', `Plot is free in full while it is in early access, and it is included in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month. Plot accounts are coming.`],
     ],
   },
   survey: {
@@ -349,10 +387,10 @@ const APP_PAGES = {
     ],
     next: null,
     faq: [
-      ['Is Survey free?', `Survey has a free plan with one project, five documents and every markup tool. Survey Pro is ${money(APPS.survey.monthly)} a month or ${money(APPS.survey.yearly)} a year.`],
+      ['Is Survey free?', `Yes. Open a PDF from your device and mark it up with no account, or sign up free for one project, five documents and every markup tool. Survey Pro is ${money(APPS.survey.monthly)} a month or ${money(APPS.survey.yearly)} a year.`],
       ['Do I need Walkthru or Plot?', 'No. Survey works on any PDF drawing. In the Kal Voe Suite, it also takes drawings from Plot and sends as-built notes back.'],
       ['What does the export look like?', 'Site surveys export as Excel (.xlsx) spreadsheets that open in Excel, Google Sheets, Numbers or LibreOffice.'],
-      ['How much does it cost?', `Survey Pro is ${money(APPS.survey.monthly)} a month on its own, or included in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month.`],
+      ['How much does it cost?', `Survey Pro is ${money(APPS.survey.monthly)} a month or ${money(APPS.survey.yearly)} a year on its own, with a ${TRIAL}, or included in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month.`],
     ],
   },
 };
@@ -361,7 +399,8 @@ function appPage(k) {
   const a = APPS[k];
   const p = APP_PAGES[k];
   const others = ORDER.filter((x) => x !== k);
-  const priceLine = a.yearly ? `${money(a.monthly)} a month or ${money(a.yearly)} a year` : `${money(a.monthly)} a month`;
+  const priceLine = a.checkout ? `${money(a.monthly)} a month or ${money(a.yearly)} a year` : 'Free while in early access';
+  const buyBtn = (cls) => a.checkout ? `<a class="btn app app-${a.color} ${cls}" href="/buy?app=${k}">Buy ${a.name}</a>` : `<a class="btn app app-${a.color} ${cls}" href="${a.url}">${a.open}, free</a>`;
   const features = p.features.map(([h, d, items, demo], i) => `<div class="feature${i % 2 ? ' flip' : ''}"><div class="feature-copy"><span class="num">0${i + 1}</span><h3>${h}</h3><p>${d}</p>${checks(items)}</div><div>${demo()}</div></div>`).join('');
   const steps = ORDER.map((x) => `<div class="flow-step app-${APPS[x].color}"${x === k ? ' style="border-color:var(--app);box-shadow:var(--shadow)"' : ''}><header>${appIcon(x, 34)}<b>${APPS[x].name}</b></header><p>${APPS[x].short}</p></div>`).join(`<div class="flow-arrow">${ARROW}</div>`);
   const suiteLede = p.next ? p.next[1] : 'In the suite, Survey takes the issued drawings from Plot and sends your as-built notes back.';
@@ -369,14 +408,14 @@ function appPage(k) {
   <a class="app-id" href="/${k}">${appIcon(k, 48)}<span>${a.name}<small>by Kal Voe</small></span></a>
   <h1>${p.h1}</h1>
   <p class="lede">${p.lede}</p>
-  <div class="ctas"><a class="btn app app-${a.color} lg" href="/buy?app=${k}">Buy ${a.name}</a><a class="btn ghost lg" href="${a.url}">${a.open}</a></div>
-  <p class="price-line"><b>${priceLine}</b> on its own, or included in the <a href="/pricing">Kal Voe Suite</a> with ${others.map((x) => APPS[x].name).join(' and ')}.</p>
+  <div class="ctas">${a.checkout ? `${buyBtn('lg')}<a class="btn ghost lg" href="${a.url}">Try it free</a>` : `${buyBtn('lg')}<a class="btn ghost lg" href="/buy?app=suite">Get the suite</a>`}</div>
+  <p class="price-line"><b>${priceLine}</b>${a.checkout ? ' on its own, or try it free with no sign-up.' : ', with no account needed.'} Also included in the <a href="/pricing">Kal Voe Suite</a> with ${others.map((x) => APPS[x].name).join(' and ')}.</p>
   <div class="hero-stage win-frame">${p.hero()}</div>
 </div></section>
 <nav class="subnav app-${a.color}" aria-label="${a.name}"><div class="wrap">
   <a class="who" href="/${k}">${appIcon(k, 22)}${a.name}</a>
-  <a class="l" href="#what">What it’s for</a><a class="l" href="#features">Features</a><a class="l" href="#suite">In the suite</a><a class="l" href="#pricing">Pricing</a><a class="l" href="#faq">FAQ</a>
-  <a class="btn app app-${a.color} sm" href="/buy?app=${k}">Buy</a>
+  <a class="l" href="#what">What it’s for</a><a class="l" href="#features">Features</a><a class="l" href="#suite">In the suite</a><a class="l" href="#free">Start free</a><a class="l" href="#pricing">Pricing</a><a class="l" href="#faq">FAQ</a>
+  ${a.checkout ? `<a class="btn app app-${a.color} sm" href="/buy?app=${k}">Buy</a>` : `<a class="btn app app-${a.color} sm" href="${a.url}">Open</a>`}
 </div></nav>
 
 <section class="sec app-${a.color}" id="what"><div class="wrap">
@@ -395,8 +434,13 @@ function appPage(k) {
   ${p.next ? `<div style="max-width:760px;margin:48px auto 0">${p.next[2]()}</div>` : ''}
 </div></section>
 
+<section class="sec" id="free"><div class="wrap center">
+  <div class="head center"><p class="eyebrow">Start free</p><h2>Try ${a.name} before you sign up</h2><p class="lede">Start with no account, make a free account when you want to keep your work, and go Pro when you need more.</p></div>
+  ${ladder(k, { heading: false })}
+</div></section>
+
 <section class="sec band" id="pricing"><div class="wrap center">
-  <div class="head center"><p class="eyebrow">Pricing</p><h2>Buy ${a.name} on its own, or get it in the suite</h2></div>
+  <div class="head center"><p class="eyebrow">Pricing</p><h2>${a.checkout ? `Buy ${a.name} on its own, or get it in the suite` : `${a.name} is free now, and part of the suite`}</h2></div>
   ${cycleToggle()}
   <div class="plans other-row">${appPlan(k)}
     <article class="plan"><header>${appIcon('kalvoe', 40)}<div><b>${SUITE.name}</b><small>${a.name}, ${others.map((x) => APPS[x].name).join(' and ')}</small></div></header>
@@ -415,13 +459,15 @@ function appPage(k) {
 
 <section class="band"><div class="wrap cta-band app-${a.color}">
   <h2>${a.tagline}</h2>
-  <div class="ctas"><a class="btn app app-${a.color} lg" href="/buy?app=${k}">Buy ${a.name}</a><a class="btn ghost lg" href="/buy?app=suite">Get the suite</a></div>
+  <div class="ctas">${buyBtn('lg')}<a class="btn ghost lg" href="/buy?app=suite">Get the suite</a></div>
 </div></section>`;
   return page({
     path: '/' + k, current: '/' + k, title: p.title, desc: p.desc, body,
     schema: [
       { '@type': 'SoftwareApplication', name: `${a.name} by Kal Voe`, url: SITE + '/' + k, applicationCategory: 'BusinessApplication', publisher: { '@id': SITE + '/#org' },
-        offers: [{ '@type': 'Offer', name: `${a.name} monthly`, price: String(a.monthly), priceCurrency: 'USD' }, ...(a.yearly ? [{ '@type': 'Offer', name: `${a.name} yearly`, price: String(a.yearly), priceCurrency: 'USD' }] : [])] },
+        offers: a.checkout
+          ? [{ '@type': 'Offer', name: `${a.name} Free`, price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: `${a.name} Pro monthly`, price: String(a.monthly), priceCurrency: 'USD' }, { '@type': 'Offer', name: `${a.name} Pro yearly`, price: String(a.yearly), priceCurrency: 'USD' }]
+          : [{ '@type': 'Offer', name: `${a.name} (early access)`, price: '0', priceCurrency: 'USD' }] },
       { '@type': 'FAQPage', mainEntity: p.faq.map(([q, ans]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: ans } })) },
     ],
   });
@@ -429,11 +475,12 @@ function appPage(k) {
 
 // ---------- Pricing ----------
 const PRICING_FAQ = [
-  ['Can I buy just one app?', 'Yes. Walkthru, Plot and Survey are each sold on their own. You can add the others later, or move to the suite.'],
+  ['Can I try the apps before I pay?', 'Yes. Each app can be used free with no sign-up, then with a free account. You pay only when you want Pro or the suite, and checkout starts with a ${TRIAL_DAYS}-day free trial.'],
+  ['Can I buy just one app?', `Yes. Walkthru and Survey are each ${money(APPS.survey.monthly)} a month or ${money(APPS.survey.yearly)} a year on their own. Plot is free while it is in early access. You can add the others later, or move to the suite.`],
   ['What does the suite include?', `All three apps under one Kal Voe account, ${SUITE.storage} of storage, and hand-offs from Walkthru to Plot to Survey.`],
-  ['How much does the suite save?', `Buying the three apps one by one costs ${money(separateMonthly)} a month. The suite is ${money(SUITE.monthly)} per user a month, or ${money(SUITE.yearly)} per user a year.`],
-  ['Is there a free plan?', 'Survey has a free plan with one project, five documents and every markup tool. No card needed.'],
-  ['Do Walkthru and Plot have yearly plans?', 'Not yet. They are billed monthly for now. Survey and the suite have yearly plans.'],
+  ['How much does the suite save?', `Each app is ${money(APPS.survey.monthly)} a month on its own, so all three would be ${money(separateMonthly)}. The suite is ${money(SUITE.monthly)} per user a month, a saving of ${money(suiteSaveMonthly)}, or ${money(SUITE.yearly)} per user a year against ${money(SEPARATE_YEARLY)}.`],
+  ['Is there a free plan?', 'Yes, in every app. Use it with no sign-up first, then make a free account. Survey’s free account has one project, five documents and every markup tool. No card needed.'],
+  ['Is there a yearly plan?', `Yes. Every paid plan can be billed yearly, which gives you two months free: ${money(APPS.survey.yearly)} a year for one app, or ${money(SUITE.yearly)} per user a year for the suite.`],
   ['How do I buy for a larger team?', 'The suite is priced per user. For single sign-on, seat management and an audit log, ask us about Enterprise.'],
 ];
 
@@ -449,19 +496,21 @@ function pricing() {
   const cell = (col, need) => (need === 'suite' ? (col === 'suite' ? yes : no) : (col === 'suite' || col === need ? yes : no));
   const table = `<div class="table-scroll"><table class="compare"><thead><tr><th scope="col">What you get</th>${ORDER.map((k) => `<th scope="col">${appIcon(k, 28)}${APPS[k].name}</th>`).join('')}<th scope="col">${appIcon('kalvoe', 28)}Suite</th></tr></thead><tbody>
   ${rows.map(([label, need]) => `<tr><th scope="row" style="font-weight:500">${label}</th>${[...ORDER, 'suite'].map((c) => cell(c, need)).join('')}</tr>`).join('')}
-  <tr><th scope="row" style="font-weight:500">Price per month</th>${ORDER.map((k) => `<td><b>${money(APPS[k].monthly)}</b></td>`).join('')}<td><b>${money(SUITE.monthly)}</b> per user</td></tr>
+  <tr><th scope="row" style="font-weight:500">Price per month</th>${ORDER.map((k) => `<td>${APPS[k].checkout ? `<b>${money(APPS[k].monthly)}</b>` : '<b>Free</b> for now'}</td>`).join('')}<td><b>${money(SUITE.monthly)}</b> per user</td></tr>
   </tbody></table></div>`;
   const body = `<section class="hero center" style="padding-bottom:24px"><div class="wrap">
   <h1>Pricing</h1>
-  <p class="lede">Buy the one app you need, or all three in the Kal Voe Suite. Every plan works with one Kal Voe account.</p>
+  <p class="lede">Try every app free with no sign-up. Then buy the one app you need, or all three in the Kal Voe Suite. Every plan works with one Kal Voe account.</p>
   ${cycleToggle()}
 </div></section>
 <section class="sec" style="padding-top:8px"><div class="wrap center">
   <div class="plans suite-row">${suitePlan()}</div>
-  <h2 style="margin:72px 0 8px;font-size:30px">Or buy a single app</h2><p class="lede" style="margin:0 auto 32px">Each app is sold on its own. Add the others whenever you’re ready.</p>
+  <h2 style="margin:72px 0 8px;font-size:30px">Or buy a single app</h2><p class="lede" style="margin:0 auto 32px">Each app is ${money(APPS.survey.monthly)} a month on its own. Add the others whenever you’re ready.</p>
   <div class="plans apps-row">${ORDER.map(appPlan).join('')}</div>
-  <h2 style="margin:72px 0 32px;font-size:30px">Free and Enterprise</h2>
-  <div class="plans other-row">${otherPlans()}</div>
+  <h2 style="margin:72px 0 8px;font-size:30px" id="free">Start free in any app</h2><p class="lede" style="margin:0 auto 32px">Use each app with no sign-up, then with a free account. Pay only when you want more.</p>
+  ${ORDER.map((k) => ladder(k)).join('')}
+  <h2 style="margin:72px 0 32px;font-size:30px">Enterprise</h2>
+  <div class="plans other-row">${enterprisePlan()}</div>
 </div></section>
 <section class="sec band"><div class="wrap">
   <div class="head center"><h2>Compare the plans</h2></div>
@@ -474,7 +523,7 @@ function pricing() {
   return page({
     path: '/pricing', current: '/pricing',
     title: 'Pricing: Kal Voe Suite, Walkthru, Plot and Survey',
-    desc: `Buy Walkthru (${money(APPS.walkthru.monthly)}/mo), Plot (${money(APPS.plot.monthly)}/mo) or Survey (${money(APPS.survey.monthly)}/mo) on their own, or all three in the Kal Voe Suite for ${money(SUITE.monthly)} per user a month.`,
+    desc: `Try Walkthru, Plot and Survey free with no sign-up. Walkthru Pro and Survey Pro are ${money(APPS.survey.monthly)} a month each, Plot is free in early access, and the Kal Voe Suite is ${money(SUITE.monthly)} per user a month.`,
     body,
     schema: [{ '@type': 'FAQPage', mainEntity: PRICING_FAQ.map(([q, ans]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: ans } })) }],
   });
@@ -482,41 +531,57 @@ function pricing() {
 
 // ---------- Buy ----------
 export const BUY_PRODUCTS = {
-  suite: { name: SUITE.name, monthly: SUITE.monthly, yearly: SUITE.yearly, perSeat: true, saveYear: SUITE.monthly * 12 - SUITE.yearly, note: 'All three apps, priced per user.', fallbackMail: true, fallbackLabel: 'Email us to get the suite', fallbackHow: 'Online checkout for the suite isn’t open yet. Email us and we’ll set up your team.' },
-  walkthru: { name: 'Walkthru', monthly: APPS.walkthru.monthly, yearly: null, fallback: APPS.walkthru.url, fallbackLabel: 'Continue in Walkthru', fallbackHow: 'Create your account in Walkthru and pick a plan there.' },
-  plot: { name: 'Plot', monthly: APPS.plot.monthly, yearly: null, fallbackMail: true, fallbackLabel: 'Email us to get Plot', fallbackHow: 'Online checkout for Plot isn’t open yet. Email us and we’ll set up your account.' },
-  survey: { name: 'Survey Pro', monthly: APPS.survey.monthly, yearly: APPS.survey.yearly, saveYear: round2(APPS.survey.monthly * 12 - APPS.survey.yearly), fallback: APPS.survey.url + '/?signup=1', fallbackLabel: 'Continue in Survey', fallbackHow: 'Create your free Survey account, then upgrade to Pro in the app.' },
+  suite: { name: SUITE.name, monthly: SUITE.monthly, yearly: SUITE.yearly, perSeat: true, saveYear: SUITE_YEAR_SAVE, note: `All three apps, priced per user. ${TRIAL} at checkout.`, checkout: true },
+  walkthru: { name: 'Walkthru Pro', monthly: APPS.walkthru.monthly, yearly: APPS.walkthru.yearly, saveYear: appYearSave('walkthru'), note: `${TRIAL} at checkout.`, checkout: true },
+  plot: { name: 'Plot', free: true, fallback: APPS.plot.url, fallbackLabel: 'Open Plot, free', fallbackHow: 'Plot is free while in early access, so there is nothing to buy. It is also part of the Kal Voe Suite.' },
+  survey: { name: 'Survey Pro', monthly: APPS.survey.monthly, yearly: APPS.survey.yearly, saveYear: appYearSave('survey'), note: `${TRIAL} at checkout.`, checkout: true },
 };
 
 function buy() {
-  const choice = [['suite', 'kalvoe', SUITE.name, 'Walkthru, Plot and Survey', `${money(SUITE.monthly)} / user / mo`], ...ORDER.map((k) => [k, k, APPS[k].name, APPS[k].short, `${money(APPS[k].monthly)} / mo`])]
+  const price = (k) => (BUY_PRODUCTS[k].free ? 'Free for now' : `${money(BUY_PRODUCTS[k].monthly)} / mo`);
+  const choice = [['suite', 'kalvoe', SUITE.name, 'Walkthru, Plot and Survey', `${money(SUITE.monthly)} / user / mo`], ...ORDER.map((k) => [k, k, BUY_PRODUCTS[k].name, APPS[k].short, price(k)])]
     .map(([v, ic, n, d, pr]) => `<label><input type="radio" name="plan" value="${v}" />${appIcon(ic, 44)}<span><b>${n}</b><small>${d}</small></span><span class="p">${pr}</span></label>`).join('');
   const body = `<section class="sec" style="padding-top:64px"><div class="wrap">
-  <div class="head"><h1 style="font-size:clamp(34px,4vw,48px)">Choose what to buy</h1><p class="lede">Get the whole suite, or one app on its own. You can switch later.</p></div>
+  <div class="head"><h1 style="font-size:clamp(34px,4vw,48px)">Choose what to buy</h1><p class="lede">Get the whole suite, or one app on its own. Every plan starts with a ${TRIAL}, and you can switch later.</p></div>
   <form class="buy" id="buy">
     <div>
       <fieldset style="border:0;padding:0;margin:0"><legend class="eyebrow">Product</legend><div class="choice">${choice}</div></fieldset>
       <div style="margin-top:36px"><p class="eyebrow" style="display:flex">Billing</p>${cycleToggle()}</div>
+      <div class="email-field" style="margin-top:36px">
+        <label class="eyebrow" for="buy-email" style="display:flex">Email (optional)</label>
+        <input type="email" id="buy-email" name="email" autocomplete="email" inputmode="email" placeholder="you@company.com" />
+        <p class="note">Use the email you sign in to the apps with, so your plan turns on there.</p>
+      </div>
     </div>
     <aside class="summary" aria-live="polite">
       <h2>Your order</h2>
       <div class="row"><span>Product</span><b id="sum-name">${SUITE.name}</b></div>
       <div class="row"><span>Price</span><span id="sum-unit"></span></div>
-      <div class="row" id="sum-seats-row"><span>Users</span><span class="seats"><button type="button" id="seat-minus" aria-label="One user fewer">&minus;</button><output id="seat-count">1</output><button type="button" id="seat-plus" aria-label="One more user">+</button></span></div>
-      <div class="row total"><span>Total</span><span id="sum-total"></span></div>
+      <div class="row total"><span>Today</span><span id="sum-total">$0</span></div>
       <p class="note" id="sum-note"></p>
-      <a class="btn primary lg" id="buy-go" href="${MAIL}">Continue</a>
+      <button type="submit" class="btn primary lg" id="buy-go">Continue to checkout</button>
+      <a class="btn primary lg" id="buy-open" href="${APPS.plot.url}" hidden>Open Plot, free</a>
       <p class="note" id="buy-how"></p>
+      <p class="note" id="buy-error" role="alert" hidden>We couldn’t open checkout just now. Please try again, or <a href="${MAIL}">email us</a> and we’ll set it up for you.</p>
+      <p class="note">Buying for a team of more than one? <a href="${MAIL}">Email us</a> and we’ll set up every seat.</p>
     </aside>
   </form>
 </div></section>`;
   return page({
     path: '/buy', current: '/buy',
-    title: 'Buy the Kal Voe Suite, Walkthru, Plot or Survey',
-    desc: 'Choose the Kal Voe Suite or a single app, pick monthly or yearly billing, and continue to checkout.',
+    title: 'Buy the Kal Voe Suite, Walkthru or Survey',
+    desc: `Choose the Kal Voe Suite or a single app, pick monthly or yearly billing, and start a ${TRIAL} at checkout.`,
     body,
-    config: { mail: MAIL_TO, products: BUY_PRODUCTS, checkout: CHECKOUT_LINKS },
+    config: { mail: MAIL_TO, products: BUY_PRODUCTS, endpoint: CHECKOUT_ENDPOINT, trialDays: TRIAL_DAYS },
   });
+}
+
+function thanks() {
+  const links = ORDER.map((k) => `<a class="btn ghost" href="${APPS[k].url}">Open ${APPS[k].name}</a>`).join('');
+  return page({
+    path: '/buy/thanks', title: 'You’re all set | Kal Voe', desc: 'Your Kal Voe plan is ready.',
+    body: `<section class="nf"><div class="wrap"><div class="suite-icons">${ORDER.map((k) => appIcon(k, 52, APPS[k].name)).join('')}</div><h1>You’re all set</h1><p class="lede" style="margin:0 auto 28px">Sign in to each app with the email you paid with and your plan is on.</p><div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">${links}</div><p class="note" style="margin-top:28px">Something not right? <a href="${MAIL}">Email us</a>.</p></div></section>`,
+  }).replace(/<link rel="canonical"[^>]*>/, '<meta name="robots" content="noindex" />');
 }
 
 function notFound() {
@@ -527,6 +592,8 @@ function notFound() {
 }
 
 export const PAGES = ['/', '/walkthru', '/plot', '/survey', '/pricing', '/buy'];
+// Pages that exist but stay out of the sitemap (noindex).
+export const HIDDEN_PAGES = ['/buy/thanks'];
 
 export function buildAll() {
   return {
@@ -536,6 +603,7 @@ export function buildAll() {
     'survey/index.html': appPage('survey'),
     'pricing/index.html': pricing(),
     'buy/index.html': buy(),
+    'buy/thanks/index.html': thanks(),
     '404.html': notFound(),
     'robots.txt': `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`,
     'sitemap.xml': `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${PAGES.map((p) => `  <url><loc>${SITE}${p}</loc></url>`).join('\n')}\n</urlset>\n`,
