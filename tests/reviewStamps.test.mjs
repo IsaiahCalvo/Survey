@@ -53,8 +53,8 @@ test('the card pictures the filled-in stamp', () => {
   assert.notEqual(preview.id, item.id);
 });
 
-test('flag is beta with a migration row', () => {
-  assert.equal(FEATURE_FLAGS['review-stamps'].stage, 'beta');
+test('flag is rollout (KAL-853) with a migration row', () => {
+  assert.equal(FEATURE_FLAGS['review-stamps'].stage, 'rollout');
   const migration = fs.readFileSync('supabase/migrations/20261110130000_review_stamps_flag.sql', 'utf8');
   assert.match(migration, /'review-stamps', 'off'/);
 });
