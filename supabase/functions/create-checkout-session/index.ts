@@ -20,9 +20,9 @@ const corsHeaders = {
 }
 
 // Price ID mapping - Set these in Supabase Dashboard -> Edge Functions -> Secrets
-// STRIPE_PRO_MONTHLY_PRICE_ID = price_xxx (for $9.99/month)
-// STRIPE_PRO_ANNUAL_PRICE_ID = price_yyy (for $99/year)
-// STRIPE_ENTERPRISE_PRICE_ID = price_zzz (for $20/user/month)
+// STRIPE_PRO_MONTHLY_PRICE_ID = price_xxx (survey_pro_monthly, $12/month)
+// STRIPE_PRO_ANNUAL_PRICE_ID = price_yyy (survey_pro_yearly, $120/year)
+// STRIPE_ENTERPRISE_PRICE_ID = price_zzz (not set: Enterprise is sold through sales, KAL-414)
 
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
         // Create checkout session
         const sessionParams: Stripe.Checkout.SessionCreateParams = {
             customer: customerId,
-            payment_method_types: ['card'],
+            payment_method_types: ['card', 'link'],
             line_items: [
                 {
                     price: priceId,

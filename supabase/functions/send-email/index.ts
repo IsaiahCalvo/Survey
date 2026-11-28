@@ -295,7 +295,7 @@ Deno.serve(async (req) => {
                 bodyHtml:
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
                     `<p style="${P}">Your Pro trial will end in <strong>${data.daysLeft} days</strong> on ${data.trialEndDate}.</p>` +
-                    `<p style="${P}">To continue enjoying all Pro features, no action is needed — your subscription will automatically start at $9.99/month.</p>` +
+                    `<p style="${P}">To continue enjoying all Pro features, no action is needed — your subscription will automatically start at the plan price you chose.</p>` +
                     `<p style="${P}"><strong>Want to cancel?</strong> You can do so anytime before ${data.trialEndDate} with no charge.</p>` +
                     emailButton('Manage subscription', data.portalUrl) +
                     `<p style="${MUTED}" class="em-mut">Questions? Reply to this email for support.</p>`,
@@ -308,7 +308,7 @@ Deno.serve(async (req) => {
                 footerReason: `You're receiving this because a payment on your Survey subscription failed.`,
                 bodyHtml:
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
-                    `<p style="${P}">We were unable to process your payment for your Pro subscription ($9.99/month).</p>` +
+                    `<p style="${P}">We were unable to process your payment for your Pro subscription.</p>` +
                     `<p style="${P}"><strong>What happens now?</strong></p>` +
                     `<ul style="${LIST}">` +
                     `<li>Your subscription is currently <strong>past due</strong></li>` +

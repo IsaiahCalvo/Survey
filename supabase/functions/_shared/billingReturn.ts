@@ -1,7 +1,7 @@
 const CANONICAL_RETURN_URL = 'https://surveytool.app/';
 
 const isAllowedProductionHost = (host: string) => (
-  host === 'surveytool.app' || host === 'www.surveytool.app'
+  host === 'surveytool.app' || host === 'www.surveytool.app' || host === 'survey.kalvoe.com'
 );
 
 const isLocalDevHost = (host: string) => (
