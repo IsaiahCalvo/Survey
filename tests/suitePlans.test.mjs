@@ -72,6 +72,7 @@ describe('suite wiring', () => {
     assert.match(checkout, /Plot is free while it is in early access/);
     assert.match(checkout, /payment_method_types: \['card', 'link'\]/);
     assert.match(read('supabase/functions/create-checkout-session/index.ts'), /payment_method_types: \['card', 'link'\]/);
+    assert.match(read('supabase/functions/create-checkout-session/index.ts'), /LOOKUP_KEYS\.survey\[/);
   });
 
   it('syncs suite plans in the webhook before the Survey handlers run', () => {
