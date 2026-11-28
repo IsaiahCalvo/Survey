@@ -44,6 +44,9 @@ export const FEATURE_FLAGS = Object.freeze({
   // beta: mark-library (every document open would read the library and hold
   // a realtime channel while the database is being fixed) and review-stamps
   // (it lives in the library panel).
+  // 2026-11-28 (KAL-853): mark-library and review-stamps moved to rollout,
+  // after #1832 made the library read and listen only while its panel or the
+  // Save to library card is open, and the database held through a morning.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
@@ -188,7 +191,7 @@ export const FEATURE_FLAGS = Object.freeze({
   'version-delete': Object.freeze({ label: 'Delete one version: take a single version out of the Versions list, with Undo', stage: 'beta' }),
   'mark-library': Object.freeze({
     label: 'Mark library: save marks to a personal or project library and drop them on any page',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'mark-comments': Object.freeze({
     label: 'Comments on marks: threads, replies and @mentions with an email link',
@@ -251,7 +254,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // Drawboard Projects round 2 (2026-11-10): its twelve review stamps.
   'review-stamps': Object.freeze({
     label: 'Review stamps: Approved, Rejected, For construction and more, with your name and the date, in the Library panel',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // Drawboard Projects round 2 (2026-11-10): Export PDF keeps only chosen
   // people's marks and layers, and can add the comments as a CSV.

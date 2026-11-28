@@ -27,8 +27,8 @@ test('mark library rows: RLS on, signed-out locked out, project rules use user_c
   assert.match(sql, /\('mark-library', 'off',/);
 });
 
-test('mark library is a beta flag and gates the rail tab and the mark menu', () => {
-  assert.equal(FEATURE_FLAGS['mark-library']?.stage, 'beta');
+test('mark library is a rollout flag (KAL-853) and gates the rail tab and the mark menu', () => {
+  assert.equal(FEATURE_FLAGS['mark-library']?.stage, 'rollout');
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /isFeatureOn\('mark-library'\)/);
   assert.match(viewer, /saveFamilyToLibrary: markLibraryEnabled \? saveFamilyToLibrary : null/);
