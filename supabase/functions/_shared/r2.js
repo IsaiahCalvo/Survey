@@ -103,6 +103,19 @@ export async function presignGet(config, key, { expiresIn = 300, now = new Date(
   return `${url.origin}${url.pathname}?${canonicalQuery(base)}&X-Amz-Signature=${signature}`;
 }
 
+// A link anyone holding it can PUT one object to until it runs out (KAL-581,
+// Plot job files). Only the host is signed, so the browser may send its own
+// Content-Type and Content-Length.
+export async function presignPut(config, key, { expiresIn = 600, now = new Date() } = {}) {
+  const base = { 'X-Amz-Algorithm': 'AWS4-HMAC-SHA256', 'X-Amz-Date': amzDate(now), 'X-Amz-Expires': String(expiresIn), 'X-Amz-SignedHeaders': 'host' };
+  const date = base['X-Amz-Date'].slice(0, 8);
+  base['X-Amz-Credential'] = `${config.accessKeyId}/${date}/${config.region}/s3/aws4_request`;
+  const { url, signature } = await sign({
+    config, method: 'PUT', base: config.endpoint, key, query: base, headers: {}, payloadHash: UNSIGNED_PAYLOAD, now,
+  });
+  return `${url.origin}${url.pathname}?${canonicalQuery(base)}&X-Amz-Signature=${signature}`;
+}
+
 // One signed server-side call. A body that is not a string or bytes is sent
 // unsigned (UNSIGNED-PAYLOAD), which R2 and MinIO accept over HTTPS and HTTP.
 export async function r2Request(config, method, key, { query = {}, headers = {}, body, fetchImpl = fetch, now = new Date() } = {}) {
@@ -233,10 +246,13 @@ export async function listObjects(config, prefix, { continuationToken, fetchImpl
 // Lets browsers stream the presigned links (pdf.js range requests) from any of
 // the app's origins: web, Electron file:// (Origin: null) and the mobile apps.
 // The links carry no cookie or token beyond their own signature.
-export async function putBucketCors(config, { fetchImpl = fetch } = {}) {
+// `methods` and `headers` default to Survey's read-only rule; Plot's bucket
+// also takes browser PUTs (KAL-581).
+export async function putBucketCors(config, { fetchImpl = fetch, methods = ['GET', 'HEAD'], headers = ['range'] } = {}) {
   const xml = '<CORSConfiguration><CORSRule>'
-    + '<AllowedOrigin>*</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod>'
-    + '<AllowedHeader>range</AllowedHeader>'
+    + '<AllowedOrigin>*</AllowedOrigin>'
+    + methods.map((m) => `<AllowedMethod>${xmlEscape(m)}</AllowedMethod>`).join('')
+    + headers.map((h) => `<AllowedHeader>${xmlEscape(h)}</AllowedHeader>`).join('')
     + '<ExposeHeader>Content-Length</ExposeHeader><ExposeHeader>Content-Range</ExposeHeader>'
     + '<ExposeHeader>Accept-Ranges</ExposeHeader><ExposeHeader>ETag</ExposeHeader>'
     + '<MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>';

@@ -139,6 +139,7 @@ jobs:
           kits-admin
           notify-comment-mentions
           pdf-file-url
+          plot-job-file
           send-profile-change-notification
           sheet-sync
           stripe-webhook
