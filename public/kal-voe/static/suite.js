@@ -77,7 +77,8 @@
     const params = new URLSearchParams(location.search);
     const want = params.get('app');
     const radio = $$('input[name="plan"]', buy);
-    const pick = radio.find((r) => r.value === want) || radio.find((r) => r.value === 'suite') || radio[0];
+    const ready = (r) => { const p = cfg.products[r.value]; return p && p.checkout && !p.soon; };
+    const pick = radio.find((r) => r.value === want) || radio.find((r) => r.value === 'suite' && ready(r)) || radio.find(ready) || radio[0];
     if (pick) pick.checked = true;
     const money = (n) => '$' + (Number.isInteger(n) ? n.toLocaleString('en-US') : n.toFixed(2));
     const go = $('#buy-go');
@@ -109,6 +110,15 @@
       const per = p.perSeat ? ' per user' : '';
       $('#sum-unit').textContent = money(unit) + per + (yearly ? ' / year' : ' / month');
       $('#sum-total').textContent = '$0';
+      if (p.soon) {
+        $('#sum-note').textContent = '';
+        go.hidden = true;
+        open.hidden = false;
+        open.href = p.fallback;
+        open.textContent = p.fallbackLabel;
+        $('#buy-how').textContent = p.fallbackHow;
+        return;
+      }
       const days = cfg.trialDays || 7;
       const trial = days + '-day free trial, then ' + money(unit) + per + (yearly ? ' a year.' : ' a month.');
       $('#sum-note').textContent = yearly && p.saveYear ? trial + ' Yearly saves ' + money(p.saveYear) + ' compared with paying monthly.' : trial;
@@ -126,7 +136,7 @@
     buy.addEventListener('submit', async (e) => {
       e.preventDefault();
       const { id, cycle, p } = current();
-      if (p.free || !p.checkout) return;
+      if (p.free || p.soon || !p.checkout) return;
       go.disabled = true;
       go.textContent = 'Opening checkout…';
       err.hidden = true;

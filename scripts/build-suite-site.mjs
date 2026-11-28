@@ -531,8 +531,8 @@ function pricing() {
 
 // ---------- Buy ----------
 export const BUY_PRODUCTS = {
-  suite: { name: SUITE.name, monthly: SUITE.monthly, yearly: SUITE.yearly, perSeat: true, saveYear: SUITE_YEAR_SAVE, note: `All three apps, priced per user. ${TRIAL} at checkout.`, checkout: true },
-  walkthru: { name: 'Walkthru Pro', monthly: APPS.walkthru.monthly, yearly: APPS.walkthru.yearly, saveYear: appYearSave('walkthru'), note: `${TRIAL} at checkout.`, checkout: true },
+  suite: { name: SUITE.name, monthly: SUITE.monthly, yearly: SUITE.yearly, perSeat: true, saveYear: SUITE_YEAR_SAVE, note: `All three apps, priced per user. ${TRIAL} at checkout.`, checkout: true, soon: true, fallback: MAIL, fallbackLabel: 'Email us to get it', fallbackHow: 'Checkout for the suite opens soon. Email us and we’ll set it up for you. Survey Pro can be bought now.' },
+  walkthru: { name: 'Walkthru Pro', monthly: APPS.walkthru.monthly, yearly: APPS.walkthru.yearly, saveYear: appYearSave('walkthru'), note: `${TRIAL} at checkout.`, checkout: true, soon: true, fallback: MAIL, fallbackLabel: 'Email us to get it', fallbackHow: 'Checkout for Walkthru Pro opens soon. Email us and we’ll set it up for you. Survey Pro can be bought now.' },
   plot: { name: 'Plot', free: true, fallback: APPS.plot.url, fallbackLabel: 'Open Plot, free', fallbackHow: 'Plot is free while in early access, so there is nothing to buy. It is also part of the Kal Voe Suite.' },
   survey: { name: 'Survey Pro', monthly: APPS.survey.monthly, yearly: APPS.survey.yearly, saveYear: appYearSave('survey'), note: `${TRIAL} at checkout.`, checkout: true },
 };
