@@ -66,7 +66,10 @@
   const startCycle = new URLSearchParams(location.search).get('cycle');
   if ($('.cycle')) setCycle(startCycle === 'yearly' ? 'yearly' : 'monthly');
 
-  /* ---------- Buy page ---------- */
+  /* ---------- Buy page ----------
+     Suite, Walkthru Pro and Survey Pro go to a Stripe checkout made by
+     the suite-checkout function. Plot is free in early access, so its
+     choice just opens the app. */
   const buy = $('#buy');
   const cfgEl = $('#kv-config');
   if (buy && cfgEl) {
@@ -76,39 +79,75 @@
     const radio = $$('input[name="plan"]', buy);
     const pick = radio.find((r) => r.value === want) || radio.find((r) => r.value === 'suite') || radio[0];
     if (pick) pick.checked = true;
-    let seats = Math.max(1, Math.min(500, parseInt(params.get('seats'), 10) || 1));
     const money = (n) => '$' + (Number.isInteger(n) ? n.toLocaleString('en-US') : n.toFixed(2));
-    const render = () => {
-      const cycle = document.documentElement.dataset.cycle || 'monthly';
+    const go = $('#buy-go');
+    const open = $('#buy-open');
+    const err = $('#buy-error');
+    const email = $('#buy-email');
+    const current = () => {
+      const cycle = document.documentElement.dataset.cycle === 'yearly' ? 'yearly' : 'monthly';
       const id = (radio.find((r) => r.checked) || pick).value;
-      const p = cfg.products[id];
-      const yearly = cycle === 'yearly' && p.yearly != null;
-      const unit = yearly ? p.yearly : p.monthly;
-      const perSeat = !!p.perSeat;
-      const n = perSeat ? seats : 1;
-      $('#sum-name').textContent = p.name;
-      $('#sum-unit').textContent = money(unit) + (perSeat ? ' per user' : '') + (yearly ? ' / year' : ' / month');
-      $('#sum-seats-row').hidden = !perSeat;
-      $('#seat-count').textContent = String(seats);
-      $('#sum-total').textContent = money(Math.round(unit * n * 100) / 100) + (yearly ? ' / year' : ' / month');
-      const note = $('#sum-note');
-      if (cycle === 'yearly' && p.yearly == null) note.textContent = p.name + ' is billed monthly for now. Yearly billing isn’t offered for it yet.';
-      else if (yearly && p.saveYear) note.textContent = 'Yearly saves ' + money(p.saveYear * n) + ' compared with paying monthly.';
-      else note.textContent = p.note || '';
-      const link = (cfg.checkout[id] || {})[yearly ? 'yearly' : 'monthly'];
-      const go = $('#buy-go');
-      let href = link || p.fallback;
-      if (!link && p.fallbackMail) {
-        const body = `Hi,\n\nI'd like to buy ${p.name} (${yearly ? 'yearly' : 'monthly'})${perSeat ? ` for ${seats} user${seats === 1 ? '' : 's'}` : ''}.\n\nThanks`;
-        href = 'mailto:' + cfg.mail + '?subject=' + encodeURIComponent(p.name + ' purchase') + '&body=' + encodeURIComponent(body);
-      }
-      go.href = href;
-      go.textContent = link ? 'Continue to checkout' : p.fallbackLabel;
-      $('#buy-how').textContent = link ? 'You’ll pay on a secure Stripe checkout page.' : p.fallbackHow;
+      return { id, cycle, p: cfg.products[id] };
     };
+    const render = () => {
+      const { cycle, p } = current();
+      err.hidden = true;
+      $('#sum-name').textContent = p.name;
+      if (p.free) {
+        $('#sum-unit').textContent = 'Free while in early access';
+        $('#sum-total').textContent = '$0';
+        $('#sum-note').textContent = '';
+        go.hidden = true;
+        open.hidden = false;
+        open.href = p.fallback;
+        open.textContent = p.fallbackLabel;
+        $('#buy-how').textContent = p.fallbackHow;
+        return;
+      }
+      const yearly = cycle === 'yearly';
+      const unit = yearly ? p.yearly : p.monthly;
+      const per = p.perSeat ? ' per user' : '';
+      $('#sum-unit').textContent = money(unit) + per + (yearly ? ' / year' : ' / month');
+      $('#sum-total').textContent = '$0';
+      const days = cfg.trialDays || 7;
+      const trial = days + '-day free trial, then ' + money(unit) + per + (yearly ? ' a year.' : ' a month.');
+      $('#sum-note').textContent = yearly && p.saveYear ? trial + ' Yearly saves ' + money(p.saveYear) + ' compared with paying monthly.' : trial;
+      go.hidden = false;
+      go.disabled = false;
+      go.textContent = 'Continue to checkout';
+      open.hidden = true;
+      $('#buy-how').textContent = 'You’ll pay on a secure Stripe checkout page. Cancel before the trial ends and you won’t be charged.';
+    };
+    const fail = () => {
+      go.disabled = false;
+      go.textContent = 'Continue to checkout';
+      err.hidden = false;
+    };
+    buy.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { id, cycle, p } = current();
+      if (p.free || !p.checkout) return;
+      go.disabled = true;
+      go.textContent = 'Opening checkout…';
+      err.hidden = true;
+      const body = { plan: id, cycle, returnUrl: location.origin + '/buy/thanks' };
+      const mail = email && email.value.trim();
+      if (mail) body.email = mail;
+      try {
+        const res = await fetch(cfg.endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = res.ok ? await res.json() : null;
+        const url = data && typeof data.url === 'string' ? data.url : '';
+        if (url.startsWith('https://checkout.stripe.com/')) location.assign(url);
+        else fail();
+      } catch {
+        fail();
+      }
+    });
     radio.forEach((r) => r.addEventListener('change', render));
-    $('#seat-minus').addEventListener('click', () => { seats = Math.max(1, seats - 1); render(); });
-    $('#seat-plus').addEventListener('click', () => { seats = Math.min(500, seats + 1); render(); });
     document.addEventListener('kv:cycle', render);
     render();
   }

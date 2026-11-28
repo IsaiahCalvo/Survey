@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MARKETING_CSP } from '../functions/_lib/securityHeaders.js';
 import { onRequest as middleware } from '../functions/_middleware.js';
-import { buildAll, PAGES, BUY_PRODUCTS, APPS, SUITE } from '../scripts/build-suite-site.mjs';
+import { buildAll, PAGES, HIDDEN_PAGES, BUY_PRODUCTS, APPS, SUITE, ENTERPRISE } from '../scripts/build-suite-site.mjs';
+import { CHECKOUT_ENDPOINT, TRIAL_DAYS } from '../scripts/pricing.mjs';
 
 const root = path.resolve(process.cwd());
 const site = path.join(root, 'public', 'kal-voe');
@@ -37,8 +38,8 @@ test('Every suite page has its own canonical URL, the Kal Voe icons and no inlin
 });
 
 test('Suite pages only link to pages that exist', () => {
-  const known = new Set([...PAGES, '/privacy.html', '/terms.html']);
-  for (const p of PAGES) {
+  const known = new Set([...PAGES, ...HIDDEN_PAGES, '/privacy.html', '/terms.html']);
+  for (const p of [...PAGES, ...HIDDEN_PAGES]) {
     const html = read(pageFile(p));
     for (const [, href] of html.matchAll(/href="(\/[^"#]*)"/g)) {
       const clean = href.split('?')[0];
@@ -51,24 +52,48 @@ test('Suite pages only link to pages that exist', () => {
   }
 });
 
-test('Each app page sells that app alone and in the suite', () => {
+test('Each app page shows the free tiers, then sells that app alone and in the suite', () => {
   for (const key of Object.keys(APPS)) {
     const html = read(pageFile(`/${key}`));
     assert.ok(html.includes(APPS[key].name), `${key} name`);
-    assert.ok(html.includes(`/buy?app=${key}`), `${key} buy link`);
+    if (APPS[key].checkout) assert.ok(html.includes(`/buy?app=${key}`), `${key} buy link`);
+    else assert.ok(!html.includes(`/buy?app=${key}`), `${key} has no checkout, so no buy link`);
     assert.ok(html.includes('/buy?app=suite'), `${key} suite link`);
     assert.ok(html.includes(APPS[key].url), `${key} open link`);
     assert.match(html, /class="win demo/, `${key} has an animated demo`);
+    assert.equal((html.match(/class="plan rung"/g) || []).length, 3, `${key} shows a three-step ladder`);
   }
+  assert.match(read('plot/index.html'), /Free while in early access/);
   const pricing = read('pricing/index.html');
   assert.ok(pricing.includes(`$${SUITE.monthly}`));
+  assert.ok(pricing.includes(`$${ENTERPRISE.monthly}`));
+  assert.ok(pricing.includes(`${TRIAL_DAYS}-day free trial`));
+  assert.ok(!/no yearly/i.test(pricing), 'every paid plan has a yearly price now');
   const buy = read('buy/index.html');
   const config = JSON.parse(buy.match(/<script type="application\/json" id="kv-config">([\s\S]*?)<\/script>/)[1]);
   assert.deepEqual(Object.keys(config.products).sort(), Object.keys(BUY_PRODUCTS).sort());
-  for (const [id, product] of Object.entries(config.products)) {
-    const hasCheckout = Object.values(config.checkout[id] || {}).some(Boolean);
-    assert.ok(hasCheckout || product.fallback || product.fallbackMail, `${id} needs a way to buy`);
+  assert.equal(config.endpoint, CHECKOUT_ENDPOINT);
+  for (const id of ['suite', 'walkthru', 'survey']) {
+    const product = config.products[id];
+    assert.equal(product.checkout, true, `${id} has real checkout`);
+    assert.ok(product.monthly > 0 && product.yearly > 0, `${id} has monthly and yearly prices`);
   }
+  assert.ok(config.products.plot.free && config.products.plot.fallback, 'plot opens the app for free');
+  assert.ok(buy.includes('Use the email you sign in to the apps with, so your plan turns on there.'));
+  assert.ok(buy.includes('id="buy-error"') && /mailto:/.test(buy), 'checkout errors keep an Email us link');
+});
+
+test('Buy page posts to the checkout function and returns to /buy/thanks', () => {
+  const js = read('static/suite.js');
+  assert.match(js, /fetch\(cfg\.endpoint/);
+  assert.match(js, /returnUrl: location\.origin \+ '\/buy\/thanks'/);
+  assert.match(js, /startsWith\('https:\/\/checkout\.stripe\.com\/'\)/);
+  const thanks = read('buy/thanks/index.html');
+  assert.ok(thanks.includes('Sign in to each app with the email you paid with and your plan is on.'));
+  assert.match(thanks, /<meta name="robots" content="noindex" \/>/);
+  assert.ok(!read('sitemap.xml').includes('/buy/thanks'), 'thanks page stays out of the sitemap');
+  const csp = fs.readFileSync(path.join(root, 'functions/_lib/securityHeaders.js'), 'utf8');
+  assert.ok(csp.includes(new URL(CHECKOUT_ENDPOINT).origin), 'marketing CSP lets the buy page reach the checkout function');
 });
 
 function assetsFor(files) {

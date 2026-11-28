@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Buy the Kal Voe Suite, Walkthru, Plot or Survey</title>
-<meta name="description" content="Choose the Kal Voe Suite or a single app, pick monthly or yearly billing, and continue to checkout." />
+<title>Buy the Kal Voe Suite, Walkthru or Survey</title>
+<meta name="description" content="Choose the Kal Voe Suite or a single app, pick monthly or yearly billing, and start a 7-day free trial at checkout." />
 <link rel="canonical" href="https://kalvoe.com/buy" />
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#131315" media="(prefers-color-scheme: dark)" />
@@ -13,8 +13,8 @@
 <link rel="apple-touch-icon" href="/kal-voe/static/apple-touch-icon.png" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Kal Voe" />
-<meta property="og:title" content="Buy the Kal Voe Suite, Walkthru, Plot or Survey" />
-<meta property="og:description" content="Choose the Kal Voe Suite or a single app, pick monthly or yearly billing, and continue to checkout." />
+<meta property="og:title" content="Buy the Kal Voe Suite, Walkthru or Survey" />
+<meta property="og:description" content="Choose the Kal Voe Suite or a single app, pick monthly or yearly billing, and start a 7-day free trial at checkout." />
 <meta property="og:url" content="https://kalvoe.com/buy" />
 <meta property="og:image" content="https://kalvoe.com/kal-voe/static/og.png" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -23,7 +23,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;display=swap" />
 <link rel="stylesheet" href="/kal-voe/static/suite.css" />
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://kalvoe.com/#org","name":"Kal Voe","url":"https://kalvoe.com/","logo":"https://kalvoe.com/kal-voe/logo-512.png","email":"isaiahcalvo123@gmail.com"}]}</script>
-<script type="application/json" id="kv-config">{"mail":"isaiahcalvo123@gmail.com","products":{"suite":{"name":"Kal Voe Suite","monthly":29,"yearly":290,"perSeat":true,"saveYear":58,"note":"All three apps, priced per user.","fallbackMail":true,"fallbackLabel":"Email us to get the suite","fallbackHow":"Online checkout for the suite isn’t open yet. Email us and we’ll set up your team."},"walkthru":{"name":"Walkthru","monthly":12,"yearly":null,"fallback":"https://walkthru.tools","fallbackLabel":"Continue in Walkthru","fallbackHow":"Create your account in Walkthru and pick a plan there."},"plot":{"name":"Plot","monthly":25,"yearly":null,"fallbackMail":true,"fallbackLabel":"Email us to get Plot","fallbackHow":"Online checkout for Plot isn’t open yet. Email us and we’ll set up your account."},"survey":{"name":"Survey Pro","monthly":9.99,"yearly":99,"saveYear":20.88,"fallback":"https://surveytool.app/?signup=1","fallbackLabel":"Continue in Survey","fallbackHow":"Create your free Survey account, then upgrade to Pro in the app."}},"checkout":{"walkthru":{"monthly":"","yearly":""},"plot":{"monthly":"","yearly":""},"survey":{"monthly":"","yearly":""},"suite":{"monthly":"","yearly":""}}}</script>
+<script type="application/json" id="kv-config">{"mail":"isaiahcalvo123@gmail.com","products":{"suite":{"name":"Kal Voe Suite","monthly":24,"yearly":240,"perSeat":true,"saveYear":48,"note":"All three apps, priced per user. 7-day free trial at checkout.","checkout":true},"walkthru":{"name":"Walkthru Pro","monthly":12,"yearly":120,"saveYear":24,"note":"7-day free trial at checkout.","checkout":true},"plot":{"name":"Plot","free":true,"fallback":"https://plot-taupe-eight.vercel.app","fallbackLabel":"Open Plot, free","fallbackHow":"Plot is free while in early access, so there is nothing to buy. It is also part of the Kal Voe Suite."},"survey":{"name":"Survey Pro","monthly":12,"yearly":120,"saveYear":24,"note":"7-day free trial at checkout.","checkout":true}},"endpoint":"https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/suite-checkout","trialDays":7}</script>
 <script src="/kal-voe/static/suite.js" defer></script>
 </head>
 <body>
@@ -51,21 +51,28 @@
 </div></header>
 <main id="main">
 <section class="sec" style="padding-top:64px"><div class="wrap">
-  <div class="head"><h1 style="font-size:clamp(34px,4vw,48px)">Choose what to buy</h1><p class="lede">Get the whole suite, or one app on its own. You can switch later.</p></div>
+  <div class="head"><h1 style="font-size:clamp(34px,4vw,48px)">Choose what to buy</h1><p class="lede">Get the whole suite, or one app on its own. Every plan starts with a 7-day free trial, and you can switch later.</p></div>
   <form class="buy" id="buy">
     <div>
-      <fieldset style="border:0;padding:0;margin:0"><legend class="eyebrow">Product</legend><div class="choice"><label><input type="radio" name="plan" value="suite" /><img src="/kal-voe/static/kalvoe.svg" width="44" height="44" alt="" /><span><b>Kal Voe Suite</b><small>Walkthru, Plot and Survey</small></span><span class="p">$29 / user / mo</span></label><label><input type="radio" name="plan" value="walkthru" /><img src="/kal-voe/static/walkthru.svg" width="44" height="44" alt="" /><span><b>Walkthru</b><small>Walk the site with the customer and capture everything.</small></span><span class="p">$12 / mo</span></label><label><input type="radio" name="plan" value="plot" /><img src="/kal-voe/static/plot.svg" width="44" height="44" alt="" /><span><b>Plot</b><small>Turn the walk into shop drawings, schedules and issued PDFs.</small></span><span class="p">$25 / mo</span></label><label><input type="radio" name="plan" value="survey" /><img src="/kal-voe/static/survey.svg" width="44" height="44" alt="" /><span><b>Survey</b><small>Mark up drawings, run site surveys and track every install.</small></span><span class="p">$9.99 / mo</span></label></div></fieldset>
+      <fieldset style="border:0;padding:0;margin:0"><legend class="eyebrow">Product</legend><div class="choice"><label><input type="radio" name="plan" value="suite" /><img src="/kal-voe/static/kalvoe.svg" width="44" height="44" alt="" /><span><b>Kal Voe Suite</b><small>Walkthru, Plot and Survey</small></span><span class="p">$24 / user / mo</span></label><label><input type="radio" name="plan" value="walkthru" /><img src="/kal-voe/static/walkthru.svg" width="44" height="44" alt="" /><span><b>Walkthru Pro</b><small>Walk the site with the customer and capture everything.</small></span><span class="p">$12 / mo</span></label><label><input type="radio" name="plan" value="plot" /><img src="/kal-voe/static/plot.svg" width="44" height="44" alt="" /><span><b>Plot</b><small>Turn the walk into shop drawings, schedules and issued PDFs.</small></span><span class="p">Free for now</span></label><label><input type="radio" name="plan" value="survey" /><img src="/kal-voe/static/survey.svg" width="44" height="44" alt="" /><span><b>Survey Pro</b><small>Mark up drawings, run site surveys and track every install.</small></span><span class="p">$12 / mo</span></label></div></fieldset>
       <div style="margin-top:36px"><p class="eyebrow" style="display:flex">Billing</p><div class="cycle" role="group" aria-label="Billing"><button type="button" data-cycle="monthly" aria-pressed="true">Monthly</button><button type="button" data-cycle="yearly" aria-pressed="false">Yearly<span class="save">2 months free</span></button></div></div>
+      <div class="email-field" style="margin-top:36px">
+        <label class="eyebrow" for="buy-email" style="display:flex">Email (optional)</label>
+        <input type="email" id="buy-email" name="email" autocomplete="email" inputmode="email" placeholder="you@company.com" />
+        <p class="note">Use the email you sign in to the apps with, so your plan turns on there.</p>
+      </div>
     </div>
     <aside class="summary" aria-live="polite">
       <h2>Your order</h2>
       <div class="row"><span>Product</span><b id="sum-name">Kal Voe Suite</b></div>
       <div class="row"><span>Price</span><span id="sum-unit"></span></div>
-      <div class="row" id="sum-seats-row"><span>Users</span><span class="seats"><button type="button" id="seat-minus" aria-label="One user fewer">&minus;</button><output id="seat-count">1</output><button type="button" id="seat-plus" aria-label="One more user">+</button></span></div>
-      <div class="row total"><span>Total</span><span id="sum-total"></span></div>
+      <div class="row total"><span>Today</span><span id="sum-total">$0</span></div>
       <p class="note" id="sum-note"></p>
-      <a class="btn primary lg" id="buy-go" href="mailto:isaiahcalvo123@gmail.com">Continue</a>
+      <button type="submit" class="btn primary lg" id="buy-go">Continue to checkout</button>
+      <a class="btn primary lg" id="buy-open" href="https://plot-taupe-eight.vercel.app" hidden>Open Plot, free</a>
       <p class="note" id="buy-how"></p>
+      <p class="note" id="buy-error" role="alert" hidden>We couldn’t open checkout just now. Please try again, or <a href="mailto:isaiahcalvo123@gmail.com">email us</a> and we’ll set it up for you.</p>
+      <p class="note">Buying for a team of more than one? <a href="mailto:isaiahcalvo123@gmail.com">Email us</a> and we’ll set up every seat.</p>
     </aside>
   </form>
 </div></section>
