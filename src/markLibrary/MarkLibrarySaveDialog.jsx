@@ -47,7 +47,8 @@ function Pick({ phone, label, value, options, onChange }) {
 
 export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
   const [phone] = useState(() => isPhoneLayout());
-  const state = useMarkLibrary();
+  // KAL-853: read the library only while the card is open.
+  const state = useMarkLibrary(markLibraryStore, { active: Boolean(open && payload) });
   const libraries = markLibraryStore.addableLibraries();
   const [library, setLibrary] = useState('personal');
   const [name, setName] = useState('');

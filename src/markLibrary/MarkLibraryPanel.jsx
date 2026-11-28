@@ -192,7 +192,8 @@ function LibraryTile({
 // onPlaced: the phone slides its sheet down after a tap places an item, so
 // the item shows on the page instead of under the sheet.
 export default function MarkLibraryPanel({ phone = false, headActionsHost = null, onPlaced }) {
-  const state = useMarkLibrary();
+  // KAL-853: the library is read while this panel is open, not on every document open.
+  const state = useMarkLibrary(markLibraryStore, { active: true });
   const tip = useTooltip();
   const armedId = useArmedId();
   const [query, setQuery] = useState('');

@@ -6,13 +6,19 @@
  * useMarkLibrary().
  *
  * Signed in: items live in public.mark_library_items (RLS decides who sees
- * and changes what, see the migration), and a realtime channel brings a
- * teammate's change in without a reload. Signed out (or the dev test-PDF
+ * and changes what, see the migration). Signed out (or the dev test-PDF
  * route): the personal library lives in this browser only.
+ *
+ * KAL-853 (database load): opening a document reads nothing and opens no
+ * channel. The library is read only while something shows it (the Library
+ * panel, the Save to library card), which call useMarkLibrary(store,
+ * { active: true }) and so retain the store. While it is retained, a realtime
+ * channel brings a teammate's change in live; it closes when the last one
+ * lets go. A panel opened again within REFRESH_AFTER_MS shows what was read.
  *
  * Rules (names, tags, rows, who may change what) are markLibraryModel.js.
  */
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { supabase as defaultSupabase, isSupabaseAvailable } from '../supabaseClient.js';
 import {
   canChangeLibraryItem,
@@ -30,6 +36,8 @@ import { createVisibilityGatedSubscription } from '../utils/realtimePolicy.js';
 const LOCAL_KEY = 'survey:mark-library.v1';
 const RECENTS_KEY = 'survey:mark-library-recents.v1';
 const VIEW_KEY = 'survey:mark-library-view.v1';
+/** A panel that opens again within this long shows what it read last time. */
+export const REFRESH_AFTER_MS = 60_000;
 const SELECT_COLUMNS = 'id, library, project_id, created_by, name, tags, kinds, payload, created_at, updated_at';
 
 const readJson = (key, fallback) => {
@@ -63,7 +71,11 @@ export function libraryErrorMessage(error) {
   return 'Could not save to the library. Try again.';
 }
 
-export function createMarkLibraryStore({ supabase = defaultSupabase, available = () => isSupabaseAvailable() } = {}) {
+export function createMarkLibraryStore({
+  supabase = defaultSupabase,
+  available = () => isSupabaseAvailable(),
+  now = () => Date.now(),
+} = {}) {
   let state = {
     userId: null,
     projectId: null,
@@ -74,8 +86,13 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
     view: { library: 'personal', layout: 'large', sort: 'recent', groupByTag: false, ...readJson(VIEW_KEY, {}) },
   };
   const listeners = new Set();
-  let gatedSub = null;
   let loadToken = 0;
+  // How many shown things want the library now, when it was last read (for
+  // this person and project), and whether the context changed since.
+  let demand = 0;
+  let loadedAt = 0;
+  let stale = true;
+  let gatedSub = null;
 
   const emit = () => { for (const fn of listeners) fn(); };
   const set = (patch) => { state = { ...state, ...patch }; emit(); };
@@ -143,7 +160,7 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
         };
       },
       onResume: () => {
-        if (online()) void load();
+        if (online() && demand > 0) void load();
       },
     });
   }
@@ -167,6 +184,7 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
 
   async function load() {
     const token = ++loadToken;
+    stale = false;
     const { userId, projectId } = state;
     if (!online()) {
       const items = (readJson(LOCAL_KEY, []) || [])
@@ -207,7 +225,9 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
         personal: { status: 'ready', items: (personalRes.data || []).map(libraryItemFromRow).filter(Boolean) },
         project: projectId && access.canRead ? { status: 'ready', items: projectItems } : { status: 'none', items: [] },
       });
-      subscribe();
+      loadedAt = now();
+      // Live changes only while something shows the library (KAL-853).
+      if (demand > 0 && !gatedSub) subscribe();
     } catch (error) {
       if (token !== loadToken) return;
       console.warn('[markLibrary] load failed', error?.message || error);
@@ -270,23 +290,48 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     getState() { return state; },
 
-    /** The active viewer's signed-in person and document project. */
+    /**
+     * The active viewer's signed-in person and document project. Reads
+     * nothing by itself (KAL-853): the library is read when something that
+     * shows it retains the store.
+     */
     setContext({ userId = null, projectId = null } = {}) {
-      if (userId === state.userId && projectId === state.projectId && state.personal.status !== 'idle') return;
+      if (userId === state.userId && projectId === state.projectId) return;
       const userChanged = userId !== state.userId;
       state = {
         ...state,
         userId,
         projectId,
         ...(userChanged ? { personal: { status: 'idle', items: [] } } : {}),
-        project: { status: projectId ? 'loading' : 'none', items: [] },
+        project: { status: projectId ? 'idle' : 'none', items: [] },
         access: EMPTY_ACCESS,
       };
+      stale = true;
+      loadedAt = 0;
+      loadToken += 1; // a read for the old context lands nowhere
+      unsubscribe(); // its filters name the old person and project
       emit();
-      load();
+      if (demand > 0) void load();
+    },
+    /**
+     * Something that shows the library opened: read it if it was never read
+     * for this context or the last read is older than REFRESH_AFTER_MS.
+     * Returns the matching release().
+     */
+    retain() {
+      demand += 1;
+      if (stale || now() - loadedAt >= REFRESH_AFTER_MS) void load();
+      else if (!gatedSub) subscribe();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        demand = Math.max(0, demand - 1);
+        if (demand === 0) unsubscribe();
+      };
     },
     refresh() { return load(); },
-    dispose() { unsubscribe(); listeners.clear(); },
+    dispose() { unsubscribe(); demand = 0; listeners.clear(); },
 
     canChange(item) { return canChangeLibraryItem(item, accessFor()); },
     /** Libraries this person can add to here, in menu order. */
@@ -381,6 +426,12 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
 
 export const markLibraryStore = createMarkLibraryStore();
 
-export function useMarkLibrary(store = markLibraryStore) {
+/**
+ * The library's state. Pass { active: true } from something that shows the
+ * library (it is read then, and not before); the Save to library card passes
+ * its open state.
+ */
+export function useMarkLibrary(store = markLibraryStore, { active = false } = {}) {
+  useEffect(() => (active ? store.retain() : undefined), [store, active]);
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
 }
