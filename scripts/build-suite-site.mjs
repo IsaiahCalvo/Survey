@@ -13,7 +13,8 @@
 //    saving against buying apps one by one worked out.
 //
 // Run: node scripts/build-suite-site.mjs
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TOOLS as PDF_TOOLS } from './free-tools-catalog.mjs';
@@ -24,6 +25,12 @@ import { APP_PRICES, SUITE_PRICE, ENTERPRISE_PRICE, TRIAL_DAYS, CHECKOUT_ENDPOIN
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'kal-voe');
 export const SITE = 'https://kalvoe.com';
 const S = '/kal-voe/static/';
+// suite.css and suite.js keep one name, so each page asks for them with a
+// short hash of the file: a new deploy is picked up at once, not from a cache.
+const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'kal-voe', 'static');
+const ver = (f) => createHash('sha256').update(readFileSync(join(STATIC_DIR, f))).digest('hex').slice(0, 10);
+const CSS_URL = `${S}suite.css?v=${ver('suite.css')}`;
+const JS_URL = `${S}suite.js?v=${ver('suite.js')}`;
 // The contact address the Survey marketing site already publishes.
 const MAIL_TO = SURVEY_ORG.email;
 const MAIL = 'mailto:' + MAIL_TO;
@@ -138,9 +145,9 @@ function page({ path, title, desc, body, current, schema = [], config }) {
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;display=swap" />
-<link rel="stylesheet" href="${S}suite.css" />
+<link rel="stylesheet" href="${CSS_URL}" />
 <script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph })}</script>
-${config ? `<script type="application/json" id="kv-config">${JSON.stringify(config)}</script>\n` : ''}<script src="${S}suite.js" defer></script>
+${config ? `<script type="application/json" id="kv-config">${JSON.stringify(config)}</script>\n` : ''}<script src="${JS_URL}" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
