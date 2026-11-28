@@ -168,7 +168,9 @@ test('Suite pages on other hosts send visitors to kalvoe.com, matching vercel.js
 
 test('App subdomains open each app', async () => {
   const get = (u) => middleware({ request: new Request(u), env: {}, next: async () => new Response('x') });
-  for (const [host, target] of [['survey.kalvoe.com', 'https://surveytool.app'], ['walkthru.kalvoe.com', 'https://walkthru.tools'], ['plot.kalvoe.com', APPS.plot.url]]) {
+  const own = await get('https://survey.kalvoe.com/projects?id=7');
+  assert.notEqual(own.status, 302, 'survey.kalvoe.com serves Survey itself');
+  for (const [host, target] of [['walkthru.kalvoe.com', 'https://walkthru.tools'], ['plot.kalvoe.com', APPS.plot.url]]) {
     const res = await get(`https://${host}/projects?id=7`);
     assert.equal(res.status, 302, host);
     assert.equal(res.headers.get('location'), `${target}/projects?id=7`, host);

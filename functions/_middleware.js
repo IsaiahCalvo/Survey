@@ -4,10 +4,10 @@ const KAL_VOE_HOST = 'kalvoe.com';
 const KAL_VOE_PAGE = '/kal-voe/';
 const KAL_VOE_ROOT = '/kal-voe';
 
-// App subdomains, Google/Adobe style: <app>.kalvoe.com opens the app itself.
-// Inert until the subdomain is added to this Pages project and DNS points here.
+// Other apps' subdomains, if ever attached to this Pages project, send visitors
+// to that app. survey.kalvoe.com is not here: it serves Survey itself, as it does
+// on Vercel today, so sign-ins and saved work on that address keep working.
 const KAL_VOE_APP_HOSTS = new Map([
-  ['survey.kalvoe.com', 'https://surveytool.app'],
   ['walkthru.kalvoe.com', 'https://walkthru.tools'],
   ['plot.kalvoe.com', 'https://plot-taupe-eight.vercel.app'],
 ]);
