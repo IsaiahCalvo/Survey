@@ -346,6 +346,16 @@ deno_version = 2
 [functions.stripe-webhook]
 verify_jwt = false
 
+# Kal Voe suite checkout. Public: a buyer has no account yet, so the plan is
+# tied to the email they pay with (see suite_entitlements).
+[functions.suite-checkout]
+verify_jwt = false
+
+# Server-to-server plan lookup for Walkthru and Plot. Guarded by the
+# x-kalvoe-suite-key header (SUITE_ENTITLEMENT_KEY), not a user JWT.
+[functions.suite-entitlement]
+verify_jwt = false
+
 # Agent sign-in. Agents carry no Supabase JWT; the function checks its own
 # device codes and agent tokens.
 [functions.agent-auth]

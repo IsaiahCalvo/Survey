@@ -2,6 +2,7 @@ import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { companyBillingStatus, companyIdOf } from '../_shared/companyBilling.js';
 import { paymentStillOwed, subscriptionDbStatus } from '../_shared/stripeSubscriptionState.js';
+import { PLAN_NAMES, planForPrice, planIncludesSurvey } from '../_shared/suitePlans.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -158,6 +159,11 @@ Deno.serve(async (req) => {
         switch (event.type) {
             case 'checkout.session.completed': {
                 const session = event.data.object as Stripe.Checkout.Session;
+                // Suite plans (KAL-856) are recorded by email first, so the
+                // Survey account with that email is found and made Pro below.
+                if (session.subscription) {
+                    await syncSuiteEntitlement(supabase, await liveSubscription(session.subscription as string));
+                }
                 await handleCheckoutCompleted(supabase, session);
                 break;
             }
@@ -165,12 +171,14 @@ Deno.serve(async (req) => {
             case 'customer.subscription.created':
             case 'customer.subscription.updated': {
                 const subscription = await liveSubscription(event.data.object as Stripe.Subscription);
+                await syncSuiteEntitlement(supabase, subscription);
                 await handleSubscriptionUpdate(supabase, subscription, event.data.previous_attributes);
                 break;
             }
 
             case 'customer.subscription.deleted': {
                 const subscription = event.data.object as Stripe.Subscription;
+                await syncSuiteEntitlement(supabase, subscription);
                 await handleSubscriptionDeleted(supabase, subscription);
                 break;
             }
@@ -230,6 +238,13 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
     const userId = session.metadata?.user_id;
 
     if (!userId) {
+        // A suite checkout (kalvoe.com or another app) carries no Survey user:
+        // syncSuiteEntitlement already recorded it by email and made the Survey
+        // account with that confirmed email Pro, if there is one.
+        if (session.metadata?.kalvoe_plan) {
+            await sendSuitePlanStarted(supabase, session);
+            return;
+        }
         console.error('CRITICAL: No user_id in checkout session metadata');
         return;
     }
@@ -250,7 +265,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
     // client-supplied metadata.tier — a price/tier mismatch must never grant an
     // unpaid tier. (handleSubscriptionUpdate already derives tier this way.)
     const actualPriceId = subscription.items.data[0].price.id;
-    const tier = getTierFromPriceId(actualPriceId);
+    const tier = getTierFromPriceId(actualPriceId, subscription.items.data[0].price);
     if (tier === 'free') {
         console.error('WARNING: checkout price', actualPriceId, 'maps to no configured tier (metadata said', session.metadata?.tier, ') — granting free; check STRIPE_*_PRICE_ID secrets');
     }
@@ -352,12 +367,14 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
     const userId = subscription.metadata?.user_id;
 
     if (!userId) {
-        // Try to find user by customer ID
+        // Try to find user by customer ID, or by the subscription itself (a
+        // suite plan bought outside Survey is tied by subscription id only).
         const { data: existingSubscription } = await supabase
             .from('user_subscriptions')
             .select('user_id')
-            .eq('stripe_customer_id', subscription.customer)
-            .single();
+            .or(`stripe_customer_id.eq.${subscription.customer},stripe_subscription_id.eq.${subscription.id}`)
+            .limit(1)
+            .maybeSingle();
 
         if (!existingSubscription) {
             console.error('No user found for subscription');
@@ -367,7 +384,7 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
 
     // Determine tier from price ID
     const priceId = subscription.items.data[0].price.id;
-    const tier = getTierFromPriceId(priceId);
+    const tier = getTierFromPriceId(priceId, subscription.items.data[0].price);
 
     // Check for downgrade
     const { data: currentSubscription } = await supabase
@@ -781,17 +798,91 @@ async function handleCompanyEvent(supabase: any, orgId: string, event: Stripe.Ev
     if (logError) console.error('company billing log failed', logError.message);
 }
 
-// Helper function to determine tier from price ID
-function getTierFromPriceId(priceId: string): string {
+// Helper function to determine tier from price ID. A Survey Pro or Kal Voe
+// Suite price (found by its Stripe lookup key, KAL-856) is Pro in Survey; a
+// Walkthru or Plot price alone is not.
+function getTierFromPriceId(priceId: string, price?: Stripe.Price | null): string {
     const proMonthlyPriceId = Deno.env.get('STRIPE_PRO_MONTHLY_PRICE_ID');
     const proAnnualPriceId = Deno.env.get('STRIPE_PRO_ANNUAL_PRICE_ID');
     const enterprisePriceId = Deno.env.get('STRIPE_ENTERPRISE_PRICE_ID');
 
-    if (priceId === proMonthlyPriceId || priceId === proAnnualPriceId) {
+    if (priceId === proMonthlyPriceId || priceId === proAnnualPriceId || planIncludesSurvey(planForPrice(price))) {
         return 'pro';
     } else if (priceId === enterprisePriceId) {
         return 'enterprise';
     } else {
         return 'free';
+    }
+}
+
+// ---------- Kal Voe suite plans (KAL-856) ----------
+// Every subscription to a suite price (Survey Pro, Walkthru Pro, Plot Pro, the
+// Suite) is kept in suite_entitlements under the email it was paid with. The
+// apps read that: Walkthru through the suite-entitlement function, Survey
+// through apply_suite_plan, which makes the Survey account with that confirmed
+// email Pro for a Survey or Suite plan.
+async function syncSuiteEntitlement(supabase: any, subscription: Stripe.Subscription) {
+    const price = subscription.items.data[0]?.price;
+    const plan = planForPrice(price);
+    if (!plan) return;
+
+    const customerId = stripeResourceId(subscription.customer as any);
+    if (!customerId) return;
+    let email = '';
+    try {
+        const customer = await stripe.customers.retrieve(customerId);
+        email = String((customer as Stripe.Customer).email || '').trim().toLowerCase();
+    } catch (error) {
+        failWrite('reading customer for suite plan', error);
+    }
+    if (!email) {
+        console.error('Suite subscription', subscription.id, 'has a customer with no email; not recorded');
+        return;
+    }
+
+    const period = subscriptionPeriod(subscription);
+    const cancelAt = (subscription as any).cancel_at
+        ?? (subscription.cancel_at_period_end ? period.end : null);
+    const { error } = await supabase.from('suite_entitlements').upsert({
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: customerId,
+        stripe_price_id: price?.id ?? null,
+        email,
+        plan,
+        status: subscription.status,
+        current_period_end: period.end ? new Date(period.end * 1000).toISOString() : null,
+        cancel_at: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
+        updated_at: new Date().toISOString(),
+    }, { onConflict: 'stripe_subscription_id' });
+    if (error) failWrite('recording suite plan', error);
+
+    if (planIncludesSurvey(plan) && ['active', 'trialing', 'past_due'].includes(subscription.status)) {
+        const { data: userId, error: applyError } = await supabase.rpc('apply_suite_plan_for_email', { p_email: email });
+        if (applyError) failWrite('applying suite plan to Survey account', applyError);
+        if (userId) await restoreAfterUpgrade(supabase, userId);
+    }
+}
+
+async function sendSuitePlanStarted(supabase: any, session: Stripe.Checkout.Session) {
+    try {
+        const plan = session.metadata?.kalvoe_plan as keyof typeof PLAN_NAMES;
+        const planName = PLAN_NAMES[plan];
+        const to = session.customer_details?.email || session.customer_email || '';
+        if (!planName || !to || !session.subscription) return;
+        const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
+        const price = subscription.items.data[0]?.price;
+        const amount = typeof price?.unit_amount === 'number'
+            ? `${(price.unit_amount / 100).toFixed(2)} ${String(price.currency || 'usd').toUpperCase()}`
+            : '';
+        const interval = price?.recurring?.interval || 'month';
+        const trialEndDate = subscription.status === 'trialing' ? longDate(subscription.trial_end) : '';
+        await sendEmail(
+            'subscription-started',
+            to,
+            trialEndDate ? `Your ${planName} trial has started` : `Your ${planName} subscription has started`,
+            { firstName: session.customer_details?.name?.split(' ')[0] || '', planName, amount, interval, trialEndDate, portalUrl: 'https://kalvoe.com' },
+        );
+    } catch (error) {
+        console.error('Could not send the suite plan confirmation:', error);
     }
 }

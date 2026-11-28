@@ -482,3 +482,28 @@ npm run dist
 - **Supabase Docs**: https://supabase.com/docs
 - **Stripe Support**: https://support.stripe.com
 - **Test your integration**: https://stripe.com/docs/testing
+
+## Kal Voe suite plans (KAL-856)
+
+One Stripe account (this one) sells every Kal Voe plan. Prices are found by
+lookup key, so an amount can change in Stripe without a code change:
+
+| Plan | Monthly key | Yearly key | Price |
+| --- | --- | --- | --- |
+| Survey Pro | `survey_pro_monthly` | `survey_pro_yearly` | $12 / $120 |
+| Walkthru Pro | `walkthru_pro_monthly` | `walkthru_pro_yearly` | $12 / $120 |
+| Plot Pro | `plot_pro_monthly` | `plot_pro_yearly` | not sold yet (Plot is free) |
+| Kal Voe Suite | `suite_monthly` | `suite_yearly` | $24 / $240 per user |
+| Enterprise | `enterprise_seat_monthly` | | $35 per user, through sales only |
+
+- `suite-checkout` (public) starts a 7-day trial checkout for a plan, tied to
+  the email the buyer pays with. Card and Link are offered.
+- `stripe-webhook` records every suite subscription in `suite_entitlements`
+  and makes the Survey account with that confirmed email Pro for a Survey or
+  Suite plan. Someone who pays before signing up gets Pro when their email is
+  confirmed (trigger `on_auth_user_z_suite_plan`).
+- `suite-entitlement` answers other apps (Walkthru) which plans an email holds,
+  and makes a billing page for it. Callers send `x-kalvoe-suite-key`, which
+  must equal the `SUITE_ENTITLEMENT_KEY` secret here and in the caller.
+- `STRIPE_PRO_MONTHLY_PRICE_ID` and `STRIPE_PRO_ANNUAL_PRICE_ID` point at the
+  `survey_pro_*` prices, so the in-app upgrade sells the same plan.

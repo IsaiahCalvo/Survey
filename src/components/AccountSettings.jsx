@@ -1124,15 +1124,15 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                           <div className="account-subscription-price">
                             {billingPeriod === 'annual' && subscription?.tier === 'free' ? (
                               <>
-                                <span className="price-amount">$99</span>
+                                <span className="price-amount">$120</span>
                                 <span className="price-period">/year</span>
                                 <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '4px', whiteSpace: 'nowrap' }}>
-                                  <span style={{ textDecoration: 'line-through' }}>$119.88</span> Save $20
+                                  <span style={{ textDecoration: 'line-through' }}>$144</span> Save $24
                                 </div>
                               </>
                             ) : (
                               <>
-                                <span className="price-amount">$9.99</span>
+                                <span className="price-amount">$12</span>
                                 <span className="price-period">/month</span>
                               </>
                             )}

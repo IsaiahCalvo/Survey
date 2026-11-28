@@ -142,6 +142,8 @@ jobs:
           send-profile-change-notification
           sheet-sync
           stripe-webhook
+          suite-checkout
+          suite-entitlement
           survey-agent
           survey-mcp
           survey-undo

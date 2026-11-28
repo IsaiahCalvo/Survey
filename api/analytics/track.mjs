@@ -4,6 +4,8 @@ const COLLECTOR_URL = 'https://analytics.agent-native.com/api/analytics/track';
 const PRODUCTION_ORIGINS = new Set([
   'https://surveytool.app',
   'https://www.surveytool.app',
+  // Survey's address under the Kal Voe domain, same Vercel project.
+  'https://survey.kalvoe.com',
   // Survey Nightly, a preview alias of the same Vercel project.
   'https://surveytool-nightly.vercel.app',
 ]);
